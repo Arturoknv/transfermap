@@ -1,0 +1,9 @@
+requests
+beautifulsoup4
+feedparser
+httpx
+python-dotenv
+apscheduler
+rapidfuzz
+pdfplumber
+networkx
