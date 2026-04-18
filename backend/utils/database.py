@@ -25,7 +25,7 @@ def _arg(a):
     if isinstance(a, int):
         return {"type": "integer", "value": str(a)}
     if isinstance(a, float):
-        return {"type": "float", "value": str(a)}
+        return {"type": "float", "value": a}
     return {"type": "text", "value": str(a)}
 
 def execute(sql, args=None):
