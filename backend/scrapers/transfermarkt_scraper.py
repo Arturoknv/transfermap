@@ -19,6 +19,75 @@ CAMPIONATI = [
     {"nome": "Serie C", "url": "/serie-c/transfers/wettbewerb/IT3", "categoria": "Serie C"},
 ]
 
+# Campionati italiani noti
+CAMPIONATI_ITALIANI = {"Serie A", "Serie B", "Serie C", "Serie D", "Lega Pro"}
+
+# Mappa codici Transfermarkt (/wettbewerb/CODICE) → nome lega leggibile
+LEAGUE_CODES: dict[str, str] = {
+    # Italia
+    "IT1": "Serie A", "IT2": "Serie B", "IT3": "Serie C", "IT4": "Serie D",
+    # Inghilterra
+    "GB1": "Premier League", "GB2": "Championship", "GB3": "League One",
+    # Spagna
+    "ES1": "La Liga", "ES2": "Segunda División",
+    # Francia
+    "FR1": "Ligue 1", "FR2": "Ligue 2",
+    # Germania
+    "L1": "Bundesliga", "L2": "2. Bundesliga",
+    # Portogallo
+    "PO1": "Primeira Liga",
+    # Olanda
+    "NL1": "Eredivisie",
+    # Turchia
+    "TR1": "Süper Lig",
+    # Belgio
+    "BE1": "Pro League",
+    # Grecia
+    "GR1": "Super League",
+    # Russia
+    "RU1": "Premier League Russia",
+    # Ucraina
+    "UKR1": "Premier League Ucraina",
+    # Scozia
+    "SC1": "Premiership",
+    # Austria
+    "A1": "Bundesliga Austria",
+    # Svizzera
+    "C1": "Super League Svizzera",
+    # Danimarca
+    "DK1": "Superliga",
+    # Svezia
+    "SW1": "Allsvenskan",
+    # Norvegia
+    "NO1": "Eliteserien",
+    # Croazia
+    "KR1": "HNL",
+    # Serbia
+    "SER": "SuperLiga Serbia",
+    # Romania
+    "RO1": "Liga I",
+    # Repubblica Ceca
+    "TS1": "Fortuna liga",
+    # Polonia
+    "PL1": "Ekstraklasa",
+    # USA
+    "MLS1": "MLS",
+    # Brasile
+    "BRA1": "Brasileirão",
+    # Argentina
+    "ARG1": "Liga Profesional",
+    # Messico
+    "MEX1": "Liga MX",
+    # Arabia Saudita
+    "SA1": "Saudi Pro League",
+    # Qatar
+    "QAT1": "Qatar Stars League",
+    # Emirati Arabi
+    "UAE1": "UAE Pro League",
+    # Europa (coppe)
+    "CL": "Champions League", "EL": "Europa League", "UCOL": "Conference League",
+}
+
 def get_headers():
     return random.choice(HEADERS_LIST)
 
@@ -43,12 +112,61 @@ def fetch_page(url):
         print(f"  ❌ Errore fetch {url}: {e}")
         return None
 
+def estrai_campionato_da_cella(cella) -> str | None:
+    """
+    Estrae il nome della lega dalla cella HTML del club (es. cella 'no-border-links').
+    Transfermarkt include un link <a href="/.../wettbewerb/CODICE"> con il nome lega
+    nel testo o nel title. Ritorna il nome lega leggibile o None.
+    """
+    if cella is None:
+        return None
+    # Cerca link a una lega: href contiene /wettbewerb/
+    lega_links = cella.find_all("a", href=lambda h: h and "/wettbewerb/" in h)
+    for link in lega_links:
+        href = link.get("href", "")
+        # Estrai codice dal path: /.../wettbewerb/IT1/...
+        try:
+            code = href.split("/wettbewerb/")[1].split("/")[0].split("?")[0].strip()
+        except IndexError:
+            continue
+        if code in LEAGUE_CODES:
+            return LEAGUE_CODES[code]
+        # Usa il testo del link come fallback se il codice non è mappato
+        testo = link.text.strip()
+        if testo:
+            return testo
+    # Cerca image con title = nome lega (badge lega)
+    for img in cella.find_all("img"):
+        title = img.get("title", "").strip()
+        if title and title not in ("", "-") and not title.lower().startswith("flag"):
+            # Verifica che non sia solo il nome del club
+            club_link = cella.find("a", class_="vereinprofil_tooltip")
+            if club_link and title == club_link.text.strip():
+                continue
+            return title
+    return None
+
+
 def salva_club(nome, campionato, fonte="Transfermarkt"):
+    """
+    Salva o recupera un club. Non sovrascrive il campionato se il club
+    esiste già con un campionato italiano noto (priorità ai dati di qualità).
+    """
     if not nome or nome.strip() in ["", "-", "Svincolato", "svincolato", "Ritiro", "ritiro"]:
         return None
     nome = nome.strip()
-    existing = get_rows("SELECT id FROM club WHERE nome = ?", [nome])
+    existing = get_rows("SELECT id, campionato FROM club WHERE nome = ?", [nome])
     if existing:
+        existing_camp = existing[0]["campionato"]
+        # Aggiorna campionato solo se il nuovo è più specifico
+        # Gerarchia qualità: nome_lega_reale > Estero > Sconosciuto > None
+        _vago = {None, "Sconosciuto", "Estero"}
+        nuovo_e_migliore = (
+            campionato and campionato not in _vago and existing_camp in _vago
+        )
+        if nuovo_e_migliore:
+            execute("UPDATE club SET campionato = ? WHERE id = ?",
+                    [campionato, existing[0]["id"]])
         return existing[0]["id"]
     execute(
         "INSERT INTO club (nome, campionato, fonte) VALUES (?, ?, ?)",
@@ -63,10 +181,13 @@ def salva_giocatore(nome, ruolo, club_id, fonte="Transfermarkt"):
     nome = nome.strip()
     existing = get_rows("SELECT id FROM giocatori WHERE nome = ?", [nome])
     if existing:
-        # Aggiorna ruolo se mancante
         if ruolo:
             execute("UPDATE giocatori SET ruolo = ? WHERE id = ? AND ruolo IS NULL",
                    [ruolo, existing[0]["id"]])
+        # Aggiorna club attuale se passato un club reale
+        if club_id:
+            execute("UPDATE giocatori SET club_attuale_id = ? WHERE id = ?",
+                   [club_id, existing[0]["id"]])
         return existing[0]["id"]
     execute(
         "INSERT INTO giocatori (nome, ruolo, club_attuale_id, fonte) VALUES (?, ?, ?, ?)",
@@ -77,14 +198,13 @@ def salva_giocatore(nome, ruolo, club_id, fonte="Transfermarkt"):
 
 def parse_fee(fee_testo):
     """
-    Analizza il testo della fee e restituisce (valore_in_euro, tipo_trasferimento)
+    Analizza il testo della fee e restituisce (valore_in_euro, tipo_trasferimento).
     """
     if not fee_testo:
         return None, "definitivo"
-    
+
     fee_lower = fee_testo.lower().strip()
-    
-    # Casi speciali
+
     if fee_lower in ["-", "", "?", "n/a"]:
         return None, "definitivo"
     if any(x in fee_lower for x in ["prestito", "loan", "leih"]):
@@ -93,39 +213,84 @@ def parse_fee(fee_testo):
         return None, "svincolo"
     if any(x in fee_lower for x in ["ritiro", "karriereende"]):
         return None, "svincolo"
-    
-    # Prova a estrarre valore numerico
+
     try:
         fee_clean = fee_testo.replace("mln €", "").replace("mio €", "")
         fee_clean = fee_clean.replace("Mio. €", "").replace("€", "")
         fee_clean = fee_clean.replace(".", "").replace(",", ".").strip()
         valore = float(fee_clean)
-        # Se il numero è piccolo probabilmente è in milioni
         if valore < 1000:
-            valore = int(valore * 1000000)
+            valore = int(valore * 1_000_000)
         else:
             valore = int(valore)
         return valore, "definitivo"
-    except:
+    except Exception:
         return None, "definitivo"
 
 def get_stagione_fmt(stagione):
     anno = int(stagione)
-    return f"{anno}-{(anno+1-2000):02d}"
+    return f"{anno}-{(anno + 1 - 2000):02d}"
 
 def get_finestra(stagione):
-    """Determina la finestra basandosi sulla stagione e sul mese corrente"""
     anno = int(stagione)
     anno_corrente = datetime.now().year
     mese_corrente = datetime.now().month
-    
     if anno == anno_corrente:
         return "estate" if mese_corrente >= 6 else "inverno"
-    else:
-        return "estate"  # Per stagioni passate assumiamo estate
+    return "estate"
+
+def _campionato_club_partenza(club_nome, campionato_arrivo):
+    """
+    Determina il campionato del club di partenza.
+    Se è già presente nel DB con un campionato italiano noto, lo usa.
+    Altrimenti, per trasferimenti da una lega italiana lo lascia al chiamante;
+    per trasferimenti internazionali usa "Estero".
+    """
+    if not club_nome:
+        return "Estero"
+    existing = get_rows("SELECT campionato FROM club WHERE nome = ?", [club_nome.strip()])
+    if existing and existing[0]["campionato"] in CAMPIONATI_ITALIANI:
+        return existing[0]["campionato"]
+    # Default: club di partenza che non conosciamo → Estero
+    return "Estero"
+
+
+# ─── Approccio 1: scraping per singolo club (CORRETTO — usa vero club_arrivo_id) ────
+
+def scrapa_club_list(campionato, stagione):
+    """Ottieni lista club del campionato con URL corretti per pagina trasferimenti."""
+    url = f"{BASE_URL}{campionato['url']}/plus/?saison_id={stagione}"
+    soup = fetch_page(url)
+    if not soup:
+        return []
+
+    clubs = []
+    seen = set()
+    # Cerca link ai profili club (href contiene /startseite/verein/)
+    links = soup.find_all("a", href=lambda x: x and "/startseite/verein/" in x)
+    for link in links:
+        href = link.get("href", "")
+        # Converti /nome/startseite/verein/ID → /nome/transfers/verein/ID
+        transfers_url = href.replace("/startseite/", "/transfers/")
+        # Normalizza: prendi solo la parte fino a /ID (4 segmenti dopo split)
+        parts = transfers_url.lstrip("/").split("/")
+        if len(parts) >= 4:
+            # /slug/transfers/verein/ID
+            base = "/" + "/".join(parts[:4])
+            if base not in seen:
+                seen.add(base)
+                nome = link.text.strip()
+                if nome:
+                    clubs.append({"nome": nome, "url": base})
+
+    return clubs[:30]
+
 
 def scrapa_club_trasferimenti(club_url, club_id, campionato_nome, stagione):
-    """Scrapa i trasferimenti di un singolo club per avere dati più precisi"""
+    """
+    Scrapa i trasferimenti di un singolo club.
+    club_id è l'ID reale del club di ARRIVO — nessun placeholder.
+    """
     url = f"{BASE_URL}{club_url}/saison_id/{stagione}"
     soup = fetch_page(url)
     if not soup:
@@ -134,7 +299,6 @@ def scrapa_club_trasferimenti(club_url, club_id, campionato_nome, stagione):
     nuovi = 0
     stagione_fmt = get_stagione_fmt(stagione)
 
-    # Cerca sezione arrivi
     sezioni = soup.find_all("div", class_="box")
     for sezione in sezioni:
         titolo = sezione.find("h2")
@@ -156,57 +320,62 @@ def scrapa_club_trasferimenti(club_url, club_id, campionato_nome, stagione):
                 if len(celle) < 5:
                     continue
 
-                # Nome giocatore
                 nome_el = riga.find("a", class_="spielprofil_tooltip")
                 if not nome_el:
                     continue
                 nome_giocatore = nome_el.text.strip()
 
-                # Data trasferimento
                 data_el = riga.find("td", class_="datum-transfer-cell")
                 data_trasf = data_el.text.strip() if data_el else None
 
-                # Club partenza
                 club_partenza_el = riga.find("td", class_="no-border-links")
-                club_partenza_nome = club_partenza_el.text.strip() if club_partenza_el else None
+                club_partenza_nome = None
+                camp_partenza = "Estero"
+                if club_partenza_el:
+                    # Testo del link/nome club
+                    link_club = club_partenza_el.find("a", class_="vereinprofil_tooltip")
+                    club_partenza_nome = (link_club.text.strip() if link_club
+                                         else club_partenza_el.text.strip())
+                    # Campionato: prova prima dall'HTML (link wettbewerb), poi dal DB
+                    camp_html = estrai_campionato_da_cella(club_partenza_el)
+                    if camp_html:
+                        camp_partenza = camp_html
+                    else:
+                        camp_partenza = _campionato_club_partenza(club_partenza_nome, campionato_nome)
 
-                # Fee e tipo
                 fee_el = riga.find("td", class_="rechts")
                 fee_testo = fee_el.text.strip() if fee_el else ""
                 fee, tipo = parse_fee(fee_testo)
 
-                # Salva club partenza
-                club_partenza_id = salva_club(club_partenza_nome, campionato_nome) if club_partenza_nome else None
+                club_partenza_id = salva_club(club_partenza_nome, camp_partenza) if club_partenza_nome else None
 
-                # Salva giocatore
+                # Giocatore
                 giocatore_id = salva_giocatore(nome_giocatore, None, club_id)
                 if not giocatore_id:
                     continue
 
-                # Controlla duplicati
+                # Duplicati
                 existing = get_rows(
-                    """SELECT id FROM trasferimenti_ufficiali 
-                       WHERE giocatore_id = ? AND club_arrivo_id = ? AND stagione = ?""",
+                    "SELECT id FROM trasferimenti_ufficiali "
+                    "WHERE giocatore_id = ? AND club_arrivo_id = ? AND stagione = ?",
                     [giocatore_id, club_id, stagione_fmt]
                 )
                 if existing:
-                    # Aggiorna con dati più precisi se disponibili
                     if data_trasf or fee or tipo != "definitivo":
                         execute(
-                            """UPDATE trasferimenti_ufficiali 
-                               SET tipo = ?, fee = ?, data_operazione = ?
-                               WHERE giocatore_id = ? AND club_arrivo_id = ? AND stagione = ?""",
+                            "UPDATE trasferimenti_ufficiali "
+                            "SET tipo = ?, fee = ?, data_operazione = ? "
+                            "WHERE giocatore_id = ? AND club_arrivo_id = ? AND stagione = ?",
                             [tipo, fee, data_trasf, giocatore_id, club_id, stagione_fmt]
                         )
                     continue
 
                 finestra = get_finestra(stagione)
-
                 execute(
-                    """INSERT INTO trasferimenti_ufficiali 
-                       (giocatore_id, club_partenza_id, club_arrivo_id, stagione,
-                        finestra, tipo, fee, data_operazione, fonte_primaria)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    "INSERT INTO trasferimenti_ufficiali "
+                    "(giocatore_id, club_partenza_id, club_arrivo_id, stagione, "
+                    "finestra, tipo, fee, data_operazione, fonte_primaria) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [giocatore_id, club_partenza_id, club_id,
                      stagione_fmt, finestra, tipo, fee, data_trasf, "Transfermarkt"]
                 )
@@ -217,38 +386,39 @@ def scrapa_club_trasferimenti(club_url, club_id, campionato_nome, stagione):
 
     return nuovi
 
-def scrapa_club_list(campionato, stagione):
-    """Ottieni lista club del campionato"""
-    url = f"{BASE_URL}{campionato['url']}/plus/?saison_id={stagione}"
-    soup = fetch_page(url)
-    if not soup:
-        return []
 
-    clubs = []
-    # Trova link ai profili club
-    links = soup.find_all("a", href=lambda x: x and "/startseite/verein/" in x)
-    seen = set()
-    for link in links:
-        href = link.get("href", "")
-        # Normalizza URL club
-        parts = href.split("/")
-        if len(parts) >= 4:
-            club_id_url = "/".join(parts[:4])
-            if club_id_url not in seen:
-                seen.add(club_id_url)
-                nome = link.text.strip()
-                if nome:
-                    clubs.append({"nome": nome, "url": club_id_url + "/transfers"})
+# ─── Approccio 2: pagina campionato (fallback — manteniamo ma fix del bug) ────
 
-    return clubs[:30]  # Max 30 club per campionato
+def _trova_club_sezione(tabella, soup):
+    """
+    Tenta di trovare il nome del club nella sezione HTML che contiene la tabella.
+    Transfermarkt raggruppa i trasferimenti per club: l'h2 o div.table-header
+    vicino alla tabella contiene spesso un link al profilo del club.
+    """
+    # Risale al box contenitore
+    box = tabella.find_parent("div", class_="box")
+    if box:
+        # Cerca un link con /startseite/verein/ nel box o nel suo predecessore
+        header = box.find_previous(["div", "h2"], class_=lambda c: c and "header" in c)
+        if header:
+            link = header.find("a", href=lambda h: h and "/startseite/verein/" in h)
+            if link:
+                return link.text.strip()
+        # Fallback: link con tooltip del club
+        link = box.find_previous("a", class_="vereinprofil_tooltip")
+        if link:
+            return link.text.strip()
+    return None
+
 
 def scrapa_trasferimenti_campionato(campionato, stagione="2024"):
     """
-    Approccio principale: scrapa trasferimenti da pagina campionato
-    con dati arricchiti da pagine club
+    Fallback: scrapa trasferimenti dalla pagina campionato.
+    NOTA: usa sempre scrapa_club_trasferimenti tramite run() per dati precisi.
+    Questo metodo è mantenuto per compatibilità ma ora cerca il nome club reale.
     """
     url = f"{BASE_URL}{campionato['url']}/plus/?saison_id={stagione}"
-    print(f"📡 Scraping {campionato['nome']} stagione {stagione}...")
+    print(f"  📡 Scraping campionato {campionato['nome']} stagione {stagione}...")
 
     soup = fetch_page(url)
     if not soup:
@@ -265,7 +435,6 @@ def scrapa_trasferimenti_campionato(campionato, stagione="2024"):
         if len(righe) < 3:
             continue
 
-        # Determina intestazione tabella per capire se è arrivi o uscite
         header = tabella.find_previous("h2")
         is_arrivi = True
         if header:
@@ -279,7 +448,6 @@ def scrapa_trasferimenti_campionato(campionato, stagione="2024"):
                 if len(celle) < 8:
                     continue
 
-                # Cella 0: nome giocatore
                 nome_el = celle[0].find("a")
                 if not nome_el:
                     continue
@@ -287,57 +455,52 @@ def scrapa_trasferimenti_campionato(campionato, stagione="2024"):
                 if not nome_giocatore:
                     continue
 
-                # Cella 3: ruolo
                 ruolo = celle[3].text.strip() if len(celle) > 3 else None
-
-                # Cella 7: club
                 club_nome = celle[7].text.strip() if len(celle) > 7 else ""
-
-                # Cella 8: fee reale
                 fee_testo = celle[8].text.strip() if len(celle) > 8 else ""
                 fee, tipo = parse_fee(fee_testo)
 
-                # Filtra club non validi
                 if not club_nome or club_nome in ["Svincolato", "Ritiro", "-", ""]:
                     if tipo == "svincolo":
                         club_nome = None
                     else:
                         continue
 
-                # Salva club
+                # Estrai il campionato reale della squadra controparte dalla cella HTML
+                camp_controparte = estrai_campionato_da_cella(celle[7]) or "Estero"
+
                 if is_arrivi:
-                    club_arrivo_id = salva_club(
-                        campionato["categoria"] + " Club",
-                        campionato["categoria"]
-                    )
-                    club_partenza_id = salva_club(club_nome, "Estero")
+                    # La riga descrive un ACQUISTO: celle[7] = club di partenza (estero o italiano)
+                    club_arrivo_nome = _trova_club_sezione(tabella, soup)
+                    if not club_arrivo_nome:
+                        club_arrivo_nome = campionato["categoria"] + " Club"
+                    club_arrivo_id = salva_club(club_arrivo_nome, campionato["categoria"])
+                    club_partenza_id = salva_club(club_nome, camp_controparte) if club_nome else None
                 else:
-                    club_arrivo_id = salva_club(club_nome, "Estero")
-                    club_partenza_id = None
+                    # La riga descrive una CESSIONE: celle[7] = club di arrivo (estero o italiano)
+                    club_arrivo_id = salva_club(club_nome, camp_controparte) if club_nome else None
+                    club_partenza_id = None  # non noto dalla pagina campionato
 
                 if not club_arrivo_id:
                     continue
 
-                # Salva giocatore
                 giocatore_id = salva_giocatore(nome_giocatore, ruolo, club_arrivo_id)
                 if not giocatore_id:
                     continue
 
-                # Controlla duplicati
                 existing = get_rows(
-                    """SELECT id FROM trasferimenti_ufficiali 
-                       WHERE giocatore_id = ? AND stagione = ?""",
+                    "SELECT id FROM trasferimenti_ufficiali "
+                    "WHERE giocatore_id = ? AND stagione = ?",
                     [giocatore_id, stagione_fmt]
                 )
                 if existing:
                     continue
 
-                # Salva trasferimento
                 execute(
-                    """INSERT INTO trasferimenti_ufficiali 
-                       (giocatore_id, club_partenza_id, club_arrivo_id, stagione,
-                        finestra, tipo, fee, fonte_primaria)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    "INSERT INTO trasferimenti_ufficiali "
+                    "(giocatore_id, club_partenza_id, club_arrivo_id, stagione, "
+                    "finestra, tipo, fee, fonte_primaria) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     [giocatore_id, club_partenza_id, club_arrivo_id,
                      stagione_fmt, finestra, tipo, fee, "Transfermarkt"]
                 )
@@ -349,26 +512,57 @@ def scrapa_trasferimenti_campionato(campionato, stagione="2024"):
     print(f"  ✅ {campionato['nome']} {stagione}: {nuovi} trasferimenti salvati")
     return nuovi
 
+
+# ─── Entry point principale ────────────────────────────────────────────────────
+
 def run(stagioni=["2024", "2023", "2022"]):
+    """
+    Strategia:
+    1. Per ogni campionato e stagione, recupera la lista dei club (scrapa_club_list).
+    2. Per ogni club, scrapa i trasferimenti dalla pagina del club (scrapa_club_trasferimenti).
+       → Questo approccio salva il club_arrivo_id REALE, non un placeholder.
+    3. Fallback su scrapa_trasferimenti_campionato se scrapa_club_list restituisce 0 club.
+    """
     print("🚀 Avvio scraper Transfermarkt...")
     start = datetime.now()
     totale = 0
+
     for stagione in stagioni:
         for campionato in CAMPIONATI:
-            nuovi = scrapa_trasferimenti_campionato(campionato, stagione)
-            totale += nuovi
+            print(f"\n📋 {campionato['nome']} — stagione {stagione}")
+            clubs = scrapa_club_list(campionato, stagione)
+
+            if clubs:
+                print(f"  → {len(clubs)} club trovati, scraping per-club...")
+                for club_info in clubs:
+                    club_id = salva_club(club_info["nome"], campionato["categoria"])
+                    if not club_id:
+                        continue
+                    nuovi = scrapa_club_trasferimenti(
+                        club_info["url"],
+                        club_id,
+                        campionato["categoria"],
+                        stagione
+                    )
+                    totale += nuovi
+                    if nuovi:
+                        print(f"    ✅ {club_info['nome']}: {nuovi} trasferimenti")
+            else:
+                print(f"  → Lista club vuota, fallback su pagina campionato...")
+                nuovi = scrapa_trasferimenti_campionato(campionato, stagione)
+                totale += nuovi
+
     durata = int((datetime.now() - start).total_seconds())
     print(f"\n✅ Transfermarkt completato in {durata}s — {totale} trasferimenti totali")
 
+
 if __name__ == "__main__":
-    # Test: pulisci e riscrapa Serie A 2024 con dati migliorati
-    print("🧹 Pulizia trasferimenti esistenti per nuovo test...")
-    execute("DELETE FROM trasferimenti_ufficiali WHERE stagione = '2024-25'")
-    execute("DELETE FROM giocatori WHERE fonte = 'Transfermarkt'")
-    execute("DELETE FROM club WHERE fonte = 'Transfermarkt' AND campionato != 'Serie A'")
-    print("✅ Pulizia completata")
-    
-    scrapa_trasferimenti_campionato(
-        {"nome": "Serie A", "url": "/serie-a/transfers/wettbewerb/IT1", "categoria": "Serie A"},
-        "2024"
-    )
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "test":
+        # Test singolo campionato senza cancellare dati
+        scrapa_trasferimenti_campionato(
+            {"nome": "Serie A", "url": "/serie-a/transfers/wettbewerb/IT1", "categoria": "Serie A"},
+            "2024"
+        )
+    else:
+        run(stagioni=["2024"])
