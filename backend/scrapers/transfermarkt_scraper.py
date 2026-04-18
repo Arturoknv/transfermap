@@ -147,30 +147,40 @@ def estrai_campionato_da_cella(cella) -> str | None:
     return None
 
 
+CAMPIONATI_VALIDI_DB = {"Serie A", "Serie B", "Serie C", "Serie D"}
+
+def _camp_per_db(campionato):
+    """
+    Mappa il campionato a un valore accettato dal CHECK constraint del DB.
+    Il constraint accetta solo ('Serie A','Serie B','Serie C','Serie D') o NULL.
+    Qualsiasi lega estera viene salvata come NULL.
+    """
+    if campionato in CAMPIONATI_VALIDI_DB:
+        return campionato
+    return None  # NULL supera il CHECK constraint in SQLite
+
 def salva_club(nome, campionato, fonte="Transfermarkt"):
     """
-    Salva o recupera un club. Non sovrascrive il campionato se il club
-    esiste già con un campionato italiano noto (priorità ai dati di qualità).
+    Salva o recupera un club.
+    Campionati esteri vengono salvati come NULL (constraint DB).
+    Non sovrascrive il campionato se il club esiste già con lega italiana nota.
     """
     if not nome or nome.strip() in ["", "-", "Svincolato", "svincolato", "Ritiro", "ritiro"]:
         return None
     nome = nome.strip()
+    camp_db = _camp_per_db(campionato)
     existing = get_rows("SELECT id, campionato FROM club WHERE nome = ?", [nome])
     if existing:
         existing_camp = existing[0]["campionato"]
-        # Aggiorna campionato solo se il nuovo è più specifico
-        # Gerarchia qualità: nome_lega_reale > Estero > Sconosciuto > None
-        _vago = {None, "Sconosciuto", "Estero"}
-        nuovo_e_migliore = (
-            campionato and campionato not in _vago and existing_camp in _vago
-        )
-        if nuovo_e_migliore:
+        # Aggiorna campionato solo se quello nuovo è una lega italiana valida
+        # e quello esistente è NULL (mai impostato)
+        if camp_db and not existing_camp:
             execute("UPDATE club SET campionato = ? WHERE id = ?",
-                    [campionato, existing[0]["id"]])
+                    [camp_db, existing[0]["id"]])
         return existing[0]["id"]
     execute(
         "INSERT INTO club (nome, campionato, fonte) VALUES (?, ?, ?)",
-        [nome, campionato, fonte]
+        [nome, camp_db, fonte]
     )
     rows = get_rows("SELECT id FROM club WHERE nome = ?", [nome])
     return rows[0]["id"] if rows else None
@@ -413,9 +423,12 @@ def _trova_club_sezione(tabella, soup):
 
 def scrapa_trasferimenti_campionato(campionato, stagione="2024"):
     """
-    Fallback: scrapa trasferimenti dalla pagina campionato.
-    NOTA: usa sempre scrapa_club_trasferimenti tramite run() per dati precisi.
-    Questo metodo è mantenuto per compatibilità ma ora cerca il nome club reale.
+    Scrapa trasferimenti dalla pagina aggregata del campionato su Transfermarkt.
+    Il campionato del club controparte (celle[7]) viene estratto dall'HTML via
+    estrai_campionato_da_cella() — es. "Premier League", "La Liga" — invece di
+    usare il generico "Estero".
+    Nota: il club_arrivo per le righe 'arrivi' viene cercato nell'heading HTML;
+    se non trovato cade sul placeholder campionato["categoria"] + " Club".
     """
     url = f"{BASE_URL}{campionato['url']}/plus/?saison_id={stagione}"
     print(f"  📡 Scraping campionato {campionato['nome']} stagione {stagione}...")
@@ -425,10 +438,13 @@ def scrapa_trasferimenti_campionato(campionato, stagione="2024"):
         return 0
 
     nuovi = 0
+    saltati = 0
+    errori = 0
     stagione_fmt = get_stagione_fmt(stagione)
     finestra = get_finestra(stagione)
 
     tabelle = soup.find_all("table")
+    print(f"  → {len(tabelle)} tabelle trovate nella pagina")
 
     for tabella in tabelle:
         righe = tabella.find_all("tr")
@@ -494,6 +510,7 @@ def scrapa_trasferimenti_campionato(campionato, stagione="2024"):
                     [giocatore_id, stagione_fmt]
                 )
                 if existing:
+                    saltati += 1
                     continue
 
                 execute(
@@ -506,10 +523,14 @@ def scrapa_trasferimenti_campionato(campionato, stagione="2024"):
                 )
                 nuovi += 1
 
-            except Exception:
+            except Exception as e:
+                errori += 1
+                if errori <= 5:
+                    print(f"    ⚠️  Errore riga: {e}")
                 continue
 
-    print(f"  ✅ {campionato['nome']} {stagione}: {nuovi} trasferimenti salvati")
+    totale_trovati = nuovi + saltati
+    print(f"  ✅ {campionato['nome']} {stagione}: {nuovi} nuovi, {saltati} già presenti, {errori} errori (trovati in totale: {totale_trovati})")
     return nuovi
 
 
@@ -517,11 +538,8 @@ def scrapa_trasferimenti_campionato(campionato, stagione="2024"):
 
 def run(stagioni=["2024", "2023", "2022"]):
     """
-    Strategia:
-    1. Per ogni campionato e stagione, recupera la lista dei club (scrapa_club_list).
-    2. Per ogni club, scrapa i trasferimenti dalla pagina del club (scrapa_club_trasferimenti).
-       → Questo approccio salva il club_arrivo_id REALE, non un placeholder.
-    3. Fallback su scrapa_trasferimenti_campionato se scrapa_club_list restituisce 0 club.
+    Scrapa trasferimenti dalla pagina campionato per ogni lega e stagione.
+    Campionati esteri della squadra controparte estratti dall'HTML Transfermarkt.
     """
     print("🚀 Avvio scraper Transfermarkt...")
     start = datetime.now()
@@ -530,27 +548,8 @@ def run(stagioni=["2024", "2023", "2022"]):
     for stagione in stagioni:
         for campionato in CAMPIONATI:
             print(f"\n📋 {campionato['nome']} — stagione {stagione}")
-            clubs = scrapa_club_list(campionato, stagione)
-
-            if clubs:
-                print(f"  → {len(clubs)} club trovati, scraping per-club...")
-                for club_info in clubs:
-                    club_id = salva_club(club_info["nome"], campionato["categoria"])
-                    if not club_id:
-                        continue
-                    nuovi = scrapa_club_trasferimenti(
-                        club_info["url"],
-                        club_id,
-                        campionato["categoria"],
-                        stagione
-                    )
-                    totale += nuovi
-                    if nuovi:
-                        print(f"    ✅ {club_info['nome']}: {nuovi} trasferimenti")
-            else:
-                print(f"  → Lista club vuota, fallback su pagina campionato...")
-                nuovi = scrapa_trasferimenti_campionato(campionato, stagione)
-                totale += nuovi
+            nuovi = scrapa_trasferimenti_campionato(campionato, stagione)
+            totale += nuovi
 
     durata = int((datetime.now() - start).total_seconds())
     print(f"\n✅ Transfermarkt completato in {durata}s — {totale} trasferimenti totali")

@@ -16,10 +16,22 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
+def _arg(a):
+    """Serializza un argomento nel formato Turso HTTP API."""
+    if a is None:
+        return {"type": "null"}
+    if isinstance(a, bool):
+        return {"type": "integer", "value": str(int(a))}
+    if isinstance(a, int):
+        return {"type": "integer", "value": str(a)}
+    if isinstance(a, float):
+        return {"type": "float", "value": str(a)}
+    return {"type": "text", "value": str(a)}
+
 def execute(sql, args=None):
     stmt = {"type": "execute", "stmt": {"sql": sql}}
     if args:
-        stmt["stmt"]["args"] = [{"type": "text", "value": str(a)} for a in args]
+        stmt["stmt"]["args"] = [_arg(a) for a in args]
     
     payload = {"requests": [stmt, {"type": "close"}]}
     
