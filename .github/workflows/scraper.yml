@@ -68,3 +68,51 @@ jobs:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: cd backend && PYTHONPATH=. python3 scrapers/figc_scraper.py
+
+  storico:
+    name: Stagioni Storiche
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Installa dipendenze
+        run: pip install -r backend/requirements.txt
+      - name: Scraping stagione storica
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          cd backend
+          # Determina stagione da scrapare (dalla più recente alla più vecchia)
+          python3 -c "
+          from utils.database import get_rows
+          import subprocess, sys
+          
+          # Stagioni da completare in ordine
+          stagioni_target = ['2023','2022','2021','2020','2019','2018','2017','2016','2015','2014','2013','2012','2011','2010']
+          
+          # Controlla quali stagioni abbiamo già
+          stagioni_db = get_rows('SELECT DISTINCT stagione FROM trasferimenti_ufficiali ORDER BY stagione DESC', [])
+          stagioni_presenti = [s['stagione'][:4] for s in stagioni_db]
+          
+          # Prendi la prima stagione non ancora presente
+          for stagione in stagioni_target:
+              fmt = f'{stagione}-{int(stagione)+1-2000:02d}'
+              if fmt not in [s['stagione'] for s in stagioni_db]:
+                  print(f'Scraping stagione {stagione}...')
+                  subprocess.run(['python3', 'scrapers/transfermarkt_club_scraper.py'], 
+                                env={**__import__(chr(111)+chr(115)).environ, 'STAGIONE': stagione})
+                  break
+          else:
+              print('Tutte le stagioni storiche già presenti!')
+          "
+      - name: Ricalcolo score e grafo
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          cd backend && PYTHONPATH=. python3 utils/score_calculator.py
+          cd backend && PYTHONPATH=. python3 utils/graph_builder.py

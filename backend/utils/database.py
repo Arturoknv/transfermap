@@ -29,6 +29,17 @@ def _arg(a):
     return {"type": "text", "value": str(a)}
 
 def execute(sql, args=None):
+    import time as _time
+    for _attempt in range(3):
+        try:
+            return _execute_inner(sql, args)
+        except Exception as e:
+            if _attempt < 2 and ("timeout" in str(e).lower() or "connection" in str(e).lower() or "reset" in str(e).lower()):
+                _time.sleep(5 * (_attempt + 1))
+                continue
+            raise
+
+def _execute_inner(sql, args=None):
     stmt = {"type": "execute", "stmt": {"sql": sql}}
     if args:
         stmt["stmt"]["args"] = [_arg(a) for a in args]
@@ -45,6 +56,17 @@ def execute(sql, args=None):
         raise Exception(f"Errore DB: {data}")
 
 def get_rows(sql, args=None):
+    import time as _time
+    for _attempt in range(3):
+        try:
+            return _get_rows_inner(sql, args)
+        except Exception as e:
+            if _attempt < 2 and ("timeout" in str(e).lower() or "connection" in str(e).lower() or "reset" in str(e).lower()):
+                _time.sleep(5 * (_attempt + 1))
+                continue
+            raise
+
+def _get_rows_inner(sql, args=None):
     result = execute(sql, args)
     cols = [c["name"] for c in result["cols"]]
     rows = []

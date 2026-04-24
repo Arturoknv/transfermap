@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,700&family=Barlow:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: 'Barlow', sans-serif;
+    @apply bg-white text-gray-900 antialiased;
+  }
+
+  h1, h2, h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary text-white font-bold text-lg px-6 py-3 uppercase tracking-wide hover:bg-primary-dark transition-colors;
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+
+  .btn-outline {
+    @apply border-2 border-primary text-primary font-bold text-lg px-6 py-3 uppercase tracking-wide hover:bg-primary hover:text-white transition-colors;
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+
+  .section-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    @apply text-4xl font-black uppercase tracking-tight;
+  }
+
+  .nav-link {
+    font-family: 'Barlow Condensed', sans-serif;
+    @apply text-sm font-bold uppercase tracking-widest text-gray-700 hover:text-primary transition-colors;
+  }
+
+  .table-row-hover {
+    @apply hover:bg-primary-50 transition-colors cursor-pointer;
+  }
+}
+
+.graph-tooltip {
+  position: absolute;
+  background: rgba(10, 10, 10, 0.92);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 3px;
+  font-family: 'Barlow', sans-serif;
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 100;
+  white-space: nowrap;
+  border-left: 3px solid #1a3de8;
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #f5f5f5; }
+::-webkit-scrollbar-thumb { background: #1a3de8; border-radius: 3px; }
+
+.data-table thead th {
+  font-family: 'Barlow Condensed', sans-serif;
+  @apply text-xs font-bold uppercase tracking-widest text-gray-500 bg-gray-50 py-3 px-4 text-left;
+}
+.data-table tbody td {
+  @apply py-3 px-4 text-sm border-b border-gray-100;
+}
