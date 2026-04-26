@@ -3,9 +3,14 @@ name: TransferMap Scraper
 on:
   schedule:
     - cron: '*/30 * * * *'  # RSS ogni 30 minuti
-    - cron: '0 2 * * *'     # Job notturno alle 02:00
-    - cron: '0 3 * * 1'     # FIGC ogni lunedì alle 03:00
-  workflow_dispatch:         # Avvio manuale dalla dashboard
+    - cron: '0 2 * * *'     # Job notturno
+    - cron: '0 3 * * 1'     # FIGC ogni lunedì
+    - cron: '0 3 * * *'     # Stagioni storiche ogni notte
+  workflow_dispatch:
+
+env:
+  TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+  TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
 
 jobs:
   rss:
@@ -19,13 +24,10 @@ jobs:
           python-version: '3.11'
       - name: Installa dipendenze
         run: pip install -r backend/requirements.txt
-      - name: Esegui RSS scraper
-        env:
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+      - name: RSS Scraping
         run: cd backend && PYTHONPATH=. python3 scrapers/rss_scraper.py
 
-  nightly:
+  notturno:
     name: Job Notturno
     runs-on: ubuntu-latest
     if: github.event.schedule == '0 2 * * *' || github.event_name == 'workflow_dispatch'
@@ -36,24 +38,21 @@ jobs:
           python-version: '3.11'
       - name: Installa dipendenze
         run: pip install -r backend/requirements.txt
-      - name: Transfermarkt scraper
-        env:
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-        run: cd backend && PYTHONPATH=. python3 scrapers/transfermarkt_scraper.py
+      - name: Installa Playwright
+        run: pip install playwright && python3 -m playwright install chromium --with-deps
+      - name: Transfermarkt scraping
+        run: cd backend && PYTHONPATH=. python3 scrapers/transfermarkt_club_scraper.py
+      - name: Wikipedia club partenza
+        run: cd backend && PYTHONPATH=. python3 scrapers/wikipedia_scraper.py
+      - name: DS da Transfermarkt (Playwright)
+        run: cd backend && PYTHONPATH=. python3 scrapers/playwright_ds_scraper.py
       - name: Calcolo score
-        env:
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: cd backend && PYTHONPATH=. python3 utils/score_calculator.py
       - name: Generazione grafo
-        env:
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: cd backend && PYTHONPATH=. python3 utils/graph_builder.py
 
   figc:
-    name: FIGC Settimanale
+    name: FIGC Agenti
     runs-on: ubuntu-latest
     if: github.event.schedule == '0 3 * * 1' || github.event_name == 'workflow_dispatch'
     steps:
@@ -63,16 +62,13 @@ jobs:
           python-version: '3.11'
       - name: Installa dipendenze
         run: pip install -r backend/requirements.txt
-      - name: FIGC scraper
-        env:
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+      - name: FIGC scraping
         run: cd backend && PYTHONPATH=. python3 scrapers/figc_scraper.py
 
   storico:
     name: Stagioni Storiche
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *'
+    if: github.event.schedule == '0 3 * * *' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -80,39 +76,28 @@ jobs:
           python-version: '3.11'
       - name: Installa dipendenze
         run: pip install -r backend/requirements.txt
+      - name: Installa Playwright
+        run: pip install playwright && python3 -m playwright install chromium --with-deps
       - name: Scraping stagione storica
-        env:
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: |
-          cd backend
-          # Determina stagione da scrapare (dalla più recente alla più vecchia)
-          python3 -c "
+          cd backend && python3 -c "
+          import os, subprocess
           from utils.database import get_rows
-          import subprocess, sys
-          
-          # Stagioni da completare in ordine
           stagioni_target = ['2023','2022','2021','2020','2019','2018','2017','2016','2015','2014','2013','2012','2011','2010']
-          
-          # Controlla quali stagioni abbiamo già
           stagioni_db = get_rows('SELECT DISTINCT stagione FROM trasferimenti_ufficiali ORDER BY stagione DESC', [])
-          stagioni_presenti = [s['stagione'][:4] for s in stagioni_db]
-          
-          # Prendi la prima stagione non ancora presente
+          stagioni_presenti = [s['stagione'] for s in stagioni_db]
           for stagione in stagioni_target:
               fmt = f'{stagione}-{int(stagione)+1-2000:02d}'
-              if fmt not in [s['stagione'] for s in stagioni_db]:
+              if fmt not in stagioni_presenti:
                   print(f'Scraping stagione {stagione}...')
-                  subprocess.run(['python3', 'scrapers/transfermarkt_club_scraper.py'], 
-                                env={**__import__(chr(111)+chr(115)).environ, 'STAGIONE': stagione})
+                  env = {**os.environ, 'STAGIONE': stagione}
+                  subprocess.run(['python3', 'scrapers/transfermarkt_club_scraper.py'], env=env)
+                  subprocess.run(['python3', 'scrapers/wikipedia_scraper.py'], env={**env, 'STAGIONE': stagione})
                   break
           else:
-              print('Tutte le stagioni storiche già presenti!')
+              print('Tutte le stagioni storiche presenti!')
           "
-      - name: Ricalcolo score e grafo
-        env:
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+      - name: Calcolo score e grafo
         run: |
           cd backend && PYTHONPATH=. python3 utils/score_calculator.py
           cd backend && PYTHONPATH=. python3 utils/graph_builder.py
