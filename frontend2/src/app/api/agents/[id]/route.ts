@@ -70,7 +70,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       [agentId]
     );
 
-    return NextResponse.json({ agent, trasferimenti, topClub, giocatori });
+    // Score IPC e altri score per questo procuratore
+    const scores = await query(
+      `SELECT tipo_score, valore, operazioni_base, finestra_temporale, dettaglio
+       FROM score_concentrazione
+       WHERE entita_tipo = 'procuratore' AND entita_id = ?
+       ORDER BY valore DESC
+       LIMIT 10`,
+      [agentId]
+    );
+
+    return NextResponse.json({ agent, trasferimenti, topClub, giocatori, scores });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Database error" }, { status: 500 });

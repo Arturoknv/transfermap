@@ -93,7 +93,9 @@ export default function GraphClient() {
   const [selectedEdge, setSelectedEdge] = useState<SelectedEdge | null>(null);
   const [campionato, setCampionato] = useState("Serie A");
   const [stagione, setStagione] = useState("2024-25");
-  const [filter, setFilter] = useState<string>("all");
+  const [activeTypes, setActiveTypes] = useState<Set<string>>(
+    new Set(["club", "giocatore", "procuratore", "ds", "intermediario"])
+  );
   const [search, setSearch] = useState("");
   const simulationRef = useRef<d3.Simulation<GraphNode, GraphEdge> | null>(null);
 
@@ -137,7 +139,7 @@ export default function GraphClient() {
     const height = container.clientHeight;
 
     let nodes = graphData.nodes.filter((n) => {
-      if (filter !== "all" && n.tipo !== filter) return false;
+      if (!activeTypes.has(n.tipo)) return false;
       if (search && !n.label.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
@@ -359,7 +361,7 @@ export default function GraphClient() {
     });
 
     return () => { simulation.stop(); tooltip.remove(); };
-  }, [graphData, filter, search]);
+  }, [graphData, activeTypes, search]);
 
   const nodeCount = graphData?.nodes.length ?? 0;
   const edgeCount = graphData?.edges.length ?? 0;
@@ -381,22 +383,70 @@ export default function GraphClient() {
           </select>
         </div>
         <div>
-          <label className="text-xs font-bold uppercase tracking-widest text-gray-500 block mb-2" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>Tipo nodo</label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-bold uppercase tracking-widest text-gray-500" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
+              Tipi di nodo
+            </label>
+          </div>
+          <div className="flex gap-2 mb-2">
+            <button
+              onClick={() => setActiveTypes(new Set(["club", "giocatore", "procuratore", "ds", "intermediario"]))}
+              className="flex-1 text-xs font-bold uppercase tracking-wide border border-gray-200 py-1 hover:border-primary hover:text-primary transition-colors"
+              style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+            >
+              Tutti
+            </button>
+            <button
+              onClick={() => setActiveTypes(new Set())}
+              className="flex-1 text-xs font-bold uppercase tracking-wide border border-gray-200 py-1 hover:border-gray-400 hover:text-gray-600 transition-colors"
+              style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+            >
+              Nessuno
+            </button>
+          </div>
           <div className="flex flex-col gap-1">
             {[
-              { value: "all", label: "Tutti" },
-              { value: "club", label: "Club", color: "#e8211a" },
-              { value: "giocatore", label: "Giocatori", color: "#1a3de8" },
-              { value: "procuratore", label: "Procuratori", color: "#e86b1a" },
-            ].map((opt) => (
-              <button key={opt.value} onClick={() => setFilter(opt.value)}
-                className={`flex items-center gap-2 px-2 py-1.5 text-sm text-left transition-colors ${filter === opt.value ? "bg-blue-50 text-primary font-bold" : "hover:bg-gray-50"}`}
-                style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
-              >
-                {opt.color && <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: opt.color }} />}
-                {opt.label}
-              </button>
-            ))}
+              { value: "club",          label: "Club",        color: "#e8211a" },
+              { value: "giocatore",     label: "Giocatori",   color: "#1a3de8" },
+              { value: "procuratore",   label: "Procuratori", color: "#e86b1a" },
+              { value: "ds",            label: "DS",          color: "#1ab854" },
+              { value: "intermediario", label: "Intermediari",color: "#7c1ae8" },
+            ].map((opt) => {
+              const checked = activeTypes.has(opt.value);
+              return (
+                <label
+                  key={opt.value}
+                  className={`flex items-center gap-2.5 px-2 py-1.5 cursor-pointer rounded-sm transition-colors select-none ${checked ? "bg-gray-50" : "hover:bg-gray-50 opacity-50"}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      setActiveTypes((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(opt.value)) next.delete(opt.value);
+                        else next.add(opt.value);
+                        return next;
+                      });
+                    }}
+                    className="sr-only"
+                  />
+                  {/* Custom checkbox */}
+                  <span
+                    className={`w-4 h-4 shrink-0 border-2 flex items-center justify-center transition-colors ${checked ? "border-transparent" : "border-gray-300 bg-white"}`}
+                    style={checked ? { backgroundColor: opt.color, borderColor: opt.color } : {}}
+                  >
+                    {checked && (
+                      <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </span>
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: opt.color }} />
+                  <span className="text-sm" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>{opt.label}</span>
+                </label>
+              );
+            })}
           </div>
         </div>
         <div>
@@ -415,26 +465,10 @@ export default function GraphClient() {
           </div>
         )}
 
-        <div className="border-t border-gray-100 pt-4">
-          <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>Legenda</div>
-          <div className="space-y-1.5">
-            {[
-              { color: "#e8211a", label: "Club" },
-              { color: "#1a3de8", label: "Giocatore" },
-              { color: "#e86b1a", label: "Procuratore" },
-              { color: "#1ab854", label: "Dir. Sportivo" },
-              { color: "#7c1ae8", label: "Intermediario" },
-            ].map((item) => (
-              <div key={item.label} className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                <span className="text-xs text-gray-600">{item.label}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 text-xs text-gray-400">
-            <div>Dim. nodo = n. connessioni</div>
-            <div className="mt-1">Clicca un <span className="text-primary font-medium">arco</span> per vedere i trasferimenti</div>
-          </div>
+        <div className="border-t border-gray-100 pt-4 text-xs text-gray-400 space-y-1.5">
+          <div>Dimensione nodo = n. connessioni</div>
+          <div>Clicca un <span className="text-primary font-medium">arco</span> per i trasferimenti</div>
+          <div>Clicca un <span className="text-primary font-medium">nodo</span> per le connessioni</div>
         </div>
       </div>
 
@@ -544,7 +578,7 @@ export default function GraphClient() {
                   <div key={t.id} className="px-4 py-3">
                     <div className="flex items-start justify-between gap-2 mb-1">
                       <Link
-                        href={`/players/${t.giocatore_id}`}
+                        href={`/giocatori/${t.giocatore_id}`}
                         className="text-xs font-semibold text-gray-900 hover:text-primary leading-tight"
                       >
                         {t.giocatore_nome?.trim() || "—"}
@@ -566,7 +600,7 @@ export default function GraphClient() {
                     {t.procuratore_nome?.trim() && (
                       <div className="text-[10px] text-gray-400 mt-0.5">
                         {t.procuratore_id ? (
-                          <Link href={`/agents/${t.procuratore_id}`} className="hover:text-primary">
+                          <Link href={`/procuratori/${t.procuratore_id}`} className="hover:text-primary">
                             {t.procuratore_nome.trim()}
                           </Link>
                         ) : t.procuratore_nome.trim()}

@@ -221,7 +221,7 @@ function OperazioniPanel({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
                         <Link
-                          href={`/players/${t.giocatore_id}`}
+                          href={`/giocatori/${t.giocatore_id}`}
                           className="font-semibold text-sm text-gray-900 hover:text-primary"
                           onClick={onClose}
                         >
@@ -248,7 +248,7 @@ function OperazioniPanel({
                           Proc.{" "}
                           {t.procuratore_id ? (
                             <Link
-                              href={`/agents/${t.procuratore_id}`}
+                              href={`/procuratori/${t.procuratore_id}`}
                               className="hover:text-primary"
                               onClick={onClose}
                             >

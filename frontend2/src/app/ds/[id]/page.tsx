@@ -63,6 +63,16 @@ export default function DSProfilePage() {
     return acc;
   }, {});
 
+  // Raggruppa per stagione
+  const byStagione = storico.reduce<Record<string, typeof storico>>((acc, r) => {
+    const k = String(r.stagione ?? "N/D");
+    if (!acc[k]) acc[k] = [];
+    acc[k].push(r);
+    return acc;
+  }, {});
+
+  const [vista, setVista] = useState<"club" | "stagione">("club");
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
       <div className="flex items-center gap-2 text-xs text-gray-400 mb-6">
@@ -131,25 +141,105 @@ export default function DSProfilePage() {
         ))}
       </div>
 
-      {/* Storico per club */}
-      <h2
-        className="text-xl font-black uppercase tracking-tight mb-6"
-        style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
-      >
-        Storico trasferimenti per club
-      </h2>
+      {/* Storico — toggle vista */}
+      <div className="flex items-center justify-between mb-6">
+        <h2
+          className="text-xl font-black uppercase tracking-tight"
+          style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+        >
+          Trasferimenti gestiti
+        </h2>
+        <div className="flex border border-gray-200 overflow-hidden">
+          {(["club", "stagione"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setVista(v)}
+              className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-colors ${
+                vista === v
+                  ? "bg-primary text-white"
+                  : "text-gray-500 hover:text-primary"
+              }`}
+              style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+            >
+              Per {v}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {storico.length === 0 ? (
         <p className="text-gray-400 text-sm py-8 text-center border border-gray-200">
           Nessun trasferimento registrato per questo DS.
         </p>
+      ) : vista === "stagione" ? (
+        /* ── Vista per stagione ─────────────────────────────── */
+        <div className="space-y-6">
+          {Object.entries(byStagione)
+            .sort(([a], [b]) => b.localeCompare(a))
+            .map(([stagione, items]) => (
+              <div key={stagione}>
+                <div
+                  className="text-sm font-black uppercase tracking-widest text-primary mb-2"
+                  style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                >
+                  {stagione} — {items.length} operazion{items.length === 1 ? "e" : "i"}
+                </div>
+                <div className="border border-gray-200">
+                  {items.map((t, idx) => (
+                    <div
+                      key={String(t.id)}
+                      className={`flex flex-wrap items-center gap-3 px-4 py-3 ${
+                        idx < items.length - 1 ? "border-b border-gray-100" : ""
+                      }`}
+                    >
+                      <span
+                        className={`text-xs font-bold uppercase px-2 py-0.5 rounded-sm shrink-0 ${
+                          TIPO_COLORS[String(t.tipo)] ?? "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        {String(t.tipo ?? "—")}
+                      </span>
+                      <div className="flex-1 text-sm min-w-0">
+                        <Link
+                          href={`/giocatori/${t.giocatore_id}`}
+                          className="font-semibold hover:text-primary"
+                        >
+                          {String(t.giocatore_nome ?? "—")}
+                        </Link>
+                        {t.giocatore_ruolo && (
+                          <span className="text-xs text-gray-400 ml-1">
+                            · {String(t.giocatore_ruolo)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500 shrink-0">
+                        <span className="font-medium">{String(t.club_nome ?? "—")}</span>
+                        {t.campionato && (
+                          <span className="ml-1 text-gray-400">({String(t.campionato)})</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500 hidden sm:block shrink-0">
+                        <span>{t.club_partenza ? String(t.club_partenza) : "—"}</span>
+                        <span className="mx-1 text-primary font-bold">→</span>
+                        <span>{t.club_arrivo ? String(t.club_arrivo) : "—"}</span>
+                      </div>
+                      <div className="text-xs font-mono font-semibold text-gray-700 shrink-0">
+                        {formatFee(t.fee)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+        </div>
       ) : (
+        /* ── Vista per club (default) ───────────────────────── */
         <div className="space-y-8">
           {Object.entries(byClub).map(([clubNome, items]) => {
             const firstItem = items[0];
             const clubId = firstItem.club_id;
-            // Raggruppa per stagione
-            const byStagione = items.reduce<Record<string, typeof items>>((acc, t) => {
+            // Raggruppa per stagione (dentro club)
+            const byClubStagione = items.reduce<Record<string, typeof items>>((acc, t) => {
               const s = String(t.stagione ?? "N/D");
               if (!acc[s]) acc[s] = [];
               acc[s].push(t);
@@ -180,7 +270,7 @@ export default function DSProfilePage() {
                   <span className="text-xs text-gray-400">{items.length} operazioni</span>
                 </div>
                 <div className="space-y-4 ml-4">
-                  {Object.entries(byStagione)
+                  {Object.entries(byClubStagione)
                     .sort(([a], [b]) => b.localeCompare(a))
                     .map(([stagione, ts]) => (
                       <div key={stagione}>
@@ -203,7 +293,7 @@ export default function DSProfilePage() {
                               </span>
                               <div className="flex-1 text-sm">
                                 <Link
-                                  href={`/players/${t.giocatore_id}`}
+                                  href={`/giocatori/${t.giocatore_id}`}
                                   className="font-semibold hover:text-primary"
                                 >
                                   {String(t.giocatore_nome ?? "—")}

@@ -106,7 +106,7 @@ export default function PlayersPage() {
                     {(page - 1) * 50 + i + 1}
                   </td>
                   <td>
-                    <Link href={`/players/${p.id}`} className="font-semibold text-gray-900 hover:text-primary">
+                    <Link href={`/giocatori/${p.id}`} className="font-semibold text-gray-900 hover:text-primary">
                       {p.nome}
                     </Link>
                   </td>

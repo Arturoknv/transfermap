@@ -392,7 +392,7 @@ export default async function HomePage() {
                       </span>
                       <div>
                         <Link
-                          href={`/agents/${String(a.id)}`}
+                          href={`/procuratori/${String(a.id)}`}
                           className="font-semibold text-sm text-gray-900 hover:text-primary"
                         >
                           {String(a.nome)}

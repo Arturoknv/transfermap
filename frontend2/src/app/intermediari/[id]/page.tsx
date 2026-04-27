@@ -171,7 +171,7 @@ export default function IntermediarioProfilePage() {
                       </span>
                       <div className="flex-1 text-sm">
                         <Link
-                          href={`/players/${t.giocatore_id}`}
+                          href={`/giocatori/${t.giocatore_id}`}
                           className="font-semibold hover:text-primary"
                         >
                           {String(t.giocatore_nome ?? "—")}

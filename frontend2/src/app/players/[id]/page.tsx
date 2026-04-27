@@ -161,7 +161,7 @@ export default function PlayerProfilePage() {
                       </div>
                       {t.procuratore_nome && String(t.procuratore_nome).trim() && (
                         <div className="text-xs text-gray-400 shrink-0 hidden md:block">
-                          <Link href={`/agents/${t.procuratore_id}`} className="hover:text-primary">
+                          <Link href={`/procuratori/${t.procuratore_id}`} className="hover:text-primary">
                             {String(t.procuratore_nome).trim()}
                           </Link>
                         </div>

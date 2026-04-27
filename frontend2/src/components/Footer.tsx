@@ -38,7 +38,6 @@ export default function Footer() {
                 { href: "/transfers", label: "Trasferimenti" },
                 { href: "/alert", label: "Score & Alert" },
                 { href: "/agents", label: "Procuratori" },
-                { href: "/clubs", label: "Club" },
                 { href: "/ds", label: "Direttori Sportivi" },
               ].map((link) => (
                 <li key={link.href}>

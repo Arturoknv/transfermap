@@ -4,27 +4,24 @@ import { query, execute } from "@/lib/db";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { tipo, descrizione, fonte, entita, email } = body;
+    const { tipo, descrizione, fonte_url, fonte, contesto, entita, email } = body;
+    const fonteValue = fonte_url ?? fonte;
 
-    if (!tipo || !descrizione || !fonte) {
+    if (!tipo || !descrizione || !fonteValue) {
       return NextResponse.json({ error: "Campi obbligatori mancanti: tipo, descrizione, fonte" }, { status: 400 });
     }
 
     // Basic URL validation for fonte
     try {
-      new URL(fonte);
+      new URL(fonteValue);
     } catch {
       return NextResponse.json({ error: "Il campo 'fonte' deve essere un URL valido" }, { status: 400 });
-    }
-
-    if (descrizione.length < 20) {
-      return NextResponse.json({ error: "Descrizione troppo breve (min 20 caratteri)" }, { status: 400 });
     }
 
     await execute(
       `INSERT INTO segnalazioni_utenti (tipo_anomalia, descrizione, fonte_url, entita_riferimento, email_segnalante, data_invio, stato)
        VALUES (?, ?, ?, ?, ?, datetime('now'), 'nuovo')`,
-      [tipo, descrizione, fonte, entita ?? null, email ?? null]
+      [tipo, descrizione, fonteValue, contesto ?? entita ?? null, email ?? null]
     );
 
     return NextResponse.json({ success: true, message: "Segnalazione ricevuta. Grazie per il contributo." });

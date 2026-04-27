@@ -139,7 +139,7 @@ export default function ClubProfilePage() {
                 {acquisti.map((t) => (
                   <tr key={String(t.id)} className="table-row-hover">
                     <td>
-                      <Link href={`/players/${t.giocatore_id ?? ""}`} className="font-semibold text-sm hover:text-primary">
+                      <Link href={`/giocatori/${t.giocatore_id ?? ""}`} className="font-semibold text-sm hover:text-primary">
                         {String(t.giocatore_nome ?? "—")}
                       </Link>
                       {t.ruolo && <div className="text-xs text-gray-400">{String(t.ruolo)}</div>}
@@ -180,7 +180,7 @@ export default function ClubProfilePage() {
                 <div key={String(p.id)} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-black text-gray-400 w-4" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>{i + 1}</span>
-                    <Link href={`/agents/${p.id}`} className="text-sm font-medium hover:text-primary">
+                    <Link href={`/procuratori/${p.id}`} className="text-sm font-medium hover:text-primary">
                       {String(p.nome)}
                     </Link>
                   </div>

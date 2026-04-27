@@ -6,18 +6,16 @@ import { useState, useRef, useEffect } from "react";
 
 const DB_LINKS = [
   { href: "/agents", label: "Procuratori" },
-  { href: "/ds", label: "Direttori Sportivi" },
-  { href: "/clubs", label: "Club" },
-  { href: "/players", label: "Giocatori" },
+  { href: "/ds", label: "DS" },
   { href: "/intermediari", label: "Intermediari" },
+  { href: "/players", label: "Giocatori" },
 ];
 
 const INFO_LINKS = [
   { href: "/metodologia", label: "Metodologia" },
   { href: "/fonti", label: "Fonti" },
-  { href: "/about", label: "About" },
   { href: "/faq", label: "FAQ" },
-  { href: "/segnala", label: "Segnala anomalia" },
+  { href: "/about", label: "About" },
 ];
 
 function Dropdown({
@@ -101,10 +99,10 @@ export default function Navbar({ onSegnala }: { onSegnala?: () => void }) {
           {/* Desktop nav */}
           <nav className="hidden lg:flex items-center gap-6">
             <Link
-              href="/graph"
-              className={`nav-link ${pathname === "/graph" ? "text-primary" : ""}`}
+              href="/"
+              className={`nav-link ${pathname === "/" ? "text-primary" : ""}`}
             >
-              Grafo
+              Home
             </Link>
             <Link
               href="/transfers"
@@ -113,10 +111,16 @@ export default function Navbar({ onSegnala }: { onSegnala?: () => void }) {
               Trasferimenti
             </Link>
             <Link
+              href="/graph"
+              className={`nav-link ${pathname === "/graph" ? "text-primary" : ""}`}
+            >
+              Grafo
+            </Link>
+            <Link
               href="/alert"
               className={`nav-link ${pathname === "/alert" ? "text-primary" : ""}`}
             >
-              Score & Alert
+              Alert
             </Link>
 
             <Dropdown label="Database" links={DB_LINKS} active={isDbActive} />
@@ -157,9 +161,10 @@ export default function Navbar({ onSegnala }: { onSegnala?: () => void }) {
         {menuOpen && (
           <div className="lg:hidden border-t border-gray-100 py-3 flex flex-col gap-1">
             {[
-              { href: "/graph", label: "Grafo" },
+              { href: "/", label: "Home" },
               { href: "/transfers", label: "Trasferimenti" },
-              { href: "/alert", label: "Score & Alert" },
+              { href: "/graph", label: "Grafo" },
+              { href: "/alert", label: "Alert" },
             ].map((l) => (
               <Link
                 key={l.href}

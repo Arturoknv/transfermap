@@ -114,7 +114,7 @@ export default function AgentsPage() {
                     {(page - 1) * 50 + i + 1}
                   </td>
                   <td>
-                    <Link href={`/agents/${a.id}`} className="font-semibold text-gray-900 hover:text-primary">
+                    <Link href={`/procuratori/${a.id}`} className="font-semibold text-gray-900 hover:text-primary">
                       {a.nome}
                     </Link>
                     {a.agenzia && <div className="text-xs text-gray-500">{a.agenzia}</div>}

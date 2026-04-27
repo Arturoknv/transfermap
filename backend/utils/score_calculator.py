@@ -200,47 +200,31 @@ def calcola_icc():
                    None, "storico_completo", valore, scambi, dettaglio)
 
 def calcola_ipp():
-    """IPP — Indice Procuratore-Procuratore"""
-    print("  📊 Calcolo IPP...")
-    proc_list = get_rows("""
-        SELECT DISTINCT procuratore_id
-        FROM trasferimenti_ufficiali
-        WHERE procuratore_id IS NOT NULL
-    """)
-    for i, proc1 in enumerate(proc_list[:50]):
-        p1_id = proc1["procuratore_id"]
-        p1_ops = get_rows("""
-            SELECT club_arrivo_id, stagione
-            FROM trasferimenti_ufficiali
-            WHERE procuratore_id = ?
-        """, [p1_id])
-        if len(p1_ops) < 3:
-            continue
-        p1_keys = set((o["club_arrivo_id"], o["stagione"]) for o in p1_ops)
-        for proc2 in proc_list[i+1:i+20]:
-            p2_id = proc2["procuratore_id"]
-            p2_ops = get_rows("""
-                SELECT club_arrivo_id, stagione
-                FROM trasferimenti_ufficiali
-                WHERE procuratore_id = ?
-            """, [p2_id])
-            if len(p2_ops) < 3:
-                continue
-            p2_keys = set((o["club_arrivo_id"], o["stagione"]) for o in p2_ops)
-            comuni = len(p1_keys.intersection(p2_keys))
-            if comuni < 2:
-                continue
-            min_ops = min(len(p1_ops), len(p2_ops))
-            valore = round((comuni / min_ops) * 100, 1)
-            if valore < 20:
-                continue
-            dettaglio = {
-                "operazioni_comuni": comuni,
-                "ops_proc1": len(p1_ops),
-                "ops_proc2": len(p2_ops)
-            }
-            salva_score("procuratore", p1_id, p2_id, "IPP",
-                       None, "storico_completo", valore, comuni, dettaglio)
+    """IPP ottimizzato - una sola query aggregata"""
+    # Prendi tutti i dati in una sola query
+    rows = get_rows("""
+        SELECT t1.procuratore_id as p1, t2.procuratore_id as p2,
+               COUNT(*) as overlap
+        FROM trasferimenti_ufficiali t1
+        JOIN trasferimenti_ufficiali t2 
+            ON t1.club_arrivo_id = t2.club_arrivo_id
+            AND t1.stagione = t2.stagione
+            AND t1.procuratore_id < t2.procuratore_id
+        WHERE t1.procuratore_id IS NOT NULL 
+          AND t2.procuratore_id IS NOT NULL
+        GROUP BY t1.procuratore_id, t2.procuratore_id
+        HAVING COUNT(*) >= 2
+        LIMIT 100
+    """, [])
+    
+    for row in rows:
+        score = min(float(row["overlap"]) / 3.0, 10.0)
+        execute("""
+            INSERT OR REPLACE INTO score_concentrazione 
+            (entita_tipo, entita_id, tipo_score, valore, stagione)
+            VALUES ('procuratore', ?, 'IPP', ?, 'globale')
+        """, [row["p1"], score])
+
 
 def calcola_iic():
     """IIC — Indice Intermediario-Club"""

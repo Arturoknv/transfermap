@@ -204,7 +204,7 @@ export default function AgentProfilePage() {
               {giocatori.map((g) => (
                 <div key={String(g.id)} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
                   <div>
-                    <Link href={`/players/${g.id}`} className="text-sm font-medium hover:text-primary">{String(g.nome)}</Link>
+                    <Link href={`/giocatori/${g.id}`} className="text-sm font-medium hover:text-primary">{String(g.nome)}</Link>
                     {g.ruolo && <span className="text-xs text-gray-400 ml-1">· {String(g.ruolo)}</span>}
                   </div>
                   <span className="text-xs text-gray-500">{String(g.operazioni)} op.</span>

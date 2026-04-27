@@ -10,28 +10,19 @@ interface SegnalazioniDrawerProps {
 }
 
 const TIPI = [
-  "Conflitto di interessi",
-  "Fee anomala",
-  "Procuratore non registrato FIGC",
-  "Triangolazione sospetta",
-  "Dati errati / incompleti",
-  "Operazione non registrata",
+  "Errore dato",
+  "Dato mancante",
+  "Nuovo trasferimento",
   "Altro",
 ];
 
 export default function SegnalazioniDrawer({ open, onClose, context }: SegnalazioniDrawerProps) {
   const [tipo, setTipo] = useState("");
-  const [entita, setEntita] = useState(context ?? "");
   const [descrizione, setDescrizione] = useState("");
   const [fonte, setFonte] = useState("");
-  const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  // Pre-compila entità quando il contesto cambia
-  useEffect(() => {
-    if (context) setEntita(context);
-  }, [context]);
 
   // Blocca scroll quando aperto
   useEffect(() => {
@@ -39,10 +30,10 @@ export default function SegnalazioniDrawer({ open, onClose, context }: Segnalazi
     return () => { document.body.style.overflow = ""; };
   }, [open]);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!tipo || !descrizione || !fonte) {
-      setError("Compila i campi obbligatori: tipo, descrizione e link fonte.");
+      setError("Compila tutti i campi obbligatori.");
       return;
     }
     if (!fonte.startsWith("http")) {
@@ -50,18 +41,27 @@ export default function SegnalazioniDrawer({ open, onClose, context }: Segnalazi
       return;
     }
     setError("");
-    // In produzione: POST a /api/segnalazioni
-    console.log("Segnalazione:", { tipo, entita, descrizione, fonte, email });
-    setSubmitted(true);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/segnala", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo, descrizione, fonte_url: fonte, contesto: context ?? "" }),
+      });
+      if (!res.ok) throw new Error("Errore server");
+      setSubmitted(true);
+    } catch {
+      setError("Errore nell'invio. Riprova tra qualche istante.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function handleClose() {
     setSubmitted(false);
     setTipo("");
-    setEntita(context ?? "");
     setDescrizione("");
     setFonte("");
-    setEmail("");
     setError("");
     onClose();
   }
@@ -151,20 +151,6 @@ export default function SegnalazioniDrawer({ open, onClose, context }: Segnalazi
 
               <div>
                 <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1.5">
-                  Entità coinvolte
-                </label>
-                <input
-                  type="text"
-                  value={entita}
-                  onChange={(e) => setEntita(e.target.value)}
-                  placeholder="Es: Procuratore X, Club Y, stagione 2024-25"
-                  className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-                />
-                <p className="text-xs text-gray-400 mt-1">Pre-compilato dal contesto della pagina attuale</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1.5">
                   Descrizione <span className="text-red-500">*</span>
                 </label>
                 <textarea
@@ -192,23 +178,9 @@ export default function SegnalazioniDrawer({ open, onClose, context }: Segnalazi
                 </p>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1.5">
-                  Email (opzionale)
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Per aggiornamenti sulla verifica"
-                  className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-                />
-              </div>
-
               <div className="bg-gray-50 border border-gray-200 p-4 text-xs text-gray-500 leading-relaxed">
                 <strong className="text-gray-700">Privacy:</strong> I dati inviati sono utilizzati esclusivamente
-                per la verifica editoriale. L'email non viene pubblicata né condivisa con terzi.
-                Le segnalazioni anonime sono accettate.
+                per la verifica editoriale. Le segnalazioni anonime sono accettate.
               </div>
             </form>
           )}
@@ -219,10 +191,11 @@ export default function SegnalazioniDrawer({ open, onClose, context }: Segnalazi
           <div className="px-6 py-4 border-t border-gray-200">
             <button
               onClick={handleSubmit as unknown as React.MouseEventHandler}
-              className="w-full bg-primary text-white py-3 font-bold uppercase tracking-wide hover:bg-primary-dark transition-colors text-sm"
+              disabled={loading}
+              className="w-full bg-primary text-white py-3 font-bold uppercase tracking-wide hover:bg-primary-dark transition-colors text-sm disabled:opacity-60"
               style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
             >
-              Invia segnalazione
+              {loading ? "Invio in corso..." : "Invia segnalazione"}
             </button>
           </div>
         )}
