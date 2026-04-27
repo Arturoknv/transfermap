@@ -2,9 +2,22 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Metodologia — TransferMap",
+  title: "Metodologia",
   description:
-    "Spiegazione dei 10 indici di score usati da TransferMap per rilevare pattern anomali nel mercato calcistico italiano.",
+    "Spiegazione dei 10 indici di score usati da TransferMap per rilevare pattern anomali nel mercato calcistico italiano: IDP, IPC, IMD, IRC, ICP, ICC, IPP, IDG, IIC, ICG.",
+  alternates: { canonical: "/metodologia" },
+  openGraph: {
+    title: "Metodologia — TransferMap",
+    description:
+      "I 10 indici statistici usati per rilevare anomalie nel mercato calcistico italiano: formule, soglie e interpretazione.",
+    url: "/metodologia",
+    images: [{ url: "/og.png", width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Metodologia — TransferMap",
+    description: "I 10 indici statistici per rilevare anomalie nel mercato calcistico italiano.",
+  },
 };
 
 const SCORES = [

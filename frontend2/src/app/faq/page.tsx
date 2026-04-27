@@ -1,7 +1,22 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "FAQ — TransferMap",
+  title: "FAQ",
+  description:
+    "Domande frequenti su TransferMap: come vengono raccolti i dati, cosa significano gli score, come segnalare un errore e come interpretare il grafo.",
+  alternates: { canonical: "/faq" },
+  openGraph: {
+    title: "FAQ — TransferMap",
+    description:
+      "Risposte alle domande frequenti su TransferMap: dati, score, grafo e segnalazioni.",
+    url: "/faq",
+    images: [{ url: "/og.png", width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "FAQ — TransferMap",
+    description: "Domande frequenti su TransferMap: dati, score e grafo.",
+  },
 };
 
 const FAQS = [

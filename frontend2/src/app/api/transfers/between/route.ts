@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 
+export const runtime = 'edge'; // Cloudflare Pages edge runtime
 export const revalidate = 3600;
 
 // Returns transfers between two graph nodes.

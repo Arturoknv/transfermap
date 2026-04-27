@@ -5,10 +5,10 @@ import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 
 const DB_LINKS = [
-  { href: "/agents", label: "Procuratori" },
+  { href: "/procuratori", label: "Procuratori" },
   { href: "/ds", label: "DS" },
   { href: "/intermediari", label: "Intermediari" },
-  { href: "/players", label: "Giocatori" },
+  { href: "/giocatori", label: "Giocatori" },
 ];
 
 const INFO_LINKS = [

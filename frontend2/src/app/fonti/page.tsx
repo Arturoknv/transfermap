@@ -1,7 +1,22 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Fonti — TransferMap",
+  title: "Fonti",
+  description:
+    "Le fonti dei dati usati da TransferMap: Transfermarkt per i trasferimenti, Albo Agenti FIGC per le licenze, CONI per i comunicati ufficiali.",
+  alternates: { canonical: "/fonti" },
+  openGraph: {
+    title: "Fonti dei dati — TransferMap",
+    description:
+      "Transfermarkt, Albo Agenti FIGC e CONI: le fonti pubbliche su cui si basa TransferMap con note su copertura e aggiornamento.",
+    url: "/fonti",
+    images: [{ url: "/og.png", width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Fonti dei dati — TransferMap",
+    description: "Transfermarkt, FIGC e CONI: le fonti dei dati di TransferMap.",
+  },
 };
 
 export default function FontiPage() {

@@ -1,5 +1,29 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { query } from "@/lib/db";
+
+// Edge runtime: la homepage esegue query DB server-side su Cloudflare Pages
+export const runtime = 'edge';
+
+export const metadata: Metadata = {
+  title: "TransferMap — Trasparenza nel calcio italiano",
+  description:
+    "Analizza i trasferimenti del calcio italiano. Grafo interattivo, score di rischio e database di procuratori, DS e giocatori di Serie A, B e C.",
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: "TransferMap — Trasparenza nel calcio italiano",
+    description:
+      "Analizza i trasferimenti del calcio italiano. Grafo interattivo, score di rischio e database di procuratori, DS e giocatori.",
+    url: "/",
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "TransferMap" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "TransferMap — Trasparenza nel calcio italiano",
+    description:
+      "Analizza i trasferimenti del calcio italiano. Grafo interattivo e score di rischio.",
+  },
+};
 
 async function getHomeData() {
   try {

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { query, execute } from "@/lib/db";
 
+export const runtime = 'edge'; // Cloudflare Pages edge runtime
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
