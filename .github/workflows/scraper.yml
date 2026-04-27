@@ -98,6 +98,4 @@ jobs:
               print('Tutte le stagioni storiche presenti!')
           "
       - name: Calcolo score e grafo
-        run: |
-          cd backend && PYTHONPATH=. python3 utils/score_calculator.py
-          cd backend && PYTHONPATH=. python3 utils/graph_builder.py
+        run: cd backend && PYTHONPATH=. python3 utils/score_calculator.py && PYTHONPATH=. python3 utils/graph_builder.py
