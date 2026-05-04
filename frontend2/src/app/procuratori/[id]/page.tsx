@@ -11,12 +11,13 @@ const TIPO_COLORS: Record<string, string> = {
   svincolo: "bg-gray-100 text-gray-700",
 };
 
-const SCORE_RISK = (v: number) =>
-  v >= 60
-    ? { label: "Alto rischio", cls: "bg-red-100 text-red-800 border-red-200" }
-    : v >= 30
-    ? { label: "Rischio medio", cls: "bg-yellow-100 text-yellow-800 border-yellow-200" }
-    : { label: "Basso rischio", cls: "bg-green-100 text-green-800 border-green-200" };
+// Score thresholds: > 7 red, 4-7 yellow, < 4 green
+const SCORE_BAND = (v: number) =>
+  v > 7
+    ? { cls: "bg-red-100 text-red-800 border-red-200", label: "Anomalo" }
+    : v >= 4
+    ? { cls: "bg-yellow-100 text-yellow-800 border-yellow-200", label: "Attenzione" }
+    : { cls: "bg-green-100 text-green-800 border-green-200", label: "Normale" };
 
 function formatFee(fee: unknown): string {
   const n = Number(fee);
@@ -24,6 +25,44 @@ function formatFee(fee: unknown): string {
   return n >= 1_000_000
     ? `${(n / 1_000_000).toFixed(1).replace(".", ",")} mln €`
     : `${Math.round(n / 1_000)} K €`;
+}
+
+type PillItem = { id: unknown; nome: string; sub?: string };
+
+function PillGroup({
+  title,
+  items,
+  href,
+}: {
+  title: string;
+  items: PillItem[];
+  href: (id: unknown) => string;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <div
+        className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2"
+        style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+      >
+        {title}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((item) => (
+          <Link
+            key={String(item.id)}
+            href={href(item.id)}
+            className="inline-flex flex-col text-xs border border-gray-200 px-2.5 py-1.5 hover:border-primary hover:text-primary transition-colors leading-tight max-w-[200px]"
+          >
+            <span className="font-semibold truncate">{item.nome}</span>
+            {item.sub && (
+              <span className="text-[10px] text-gray-400 truncate">{item.sub}</span>
+            )}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ── Mini grafo relazioni ────────────────────────────────────────────────────
@@ -52,7 +91,6 @@ function MiniGraph({
   const cx = width / 2;
   const cy = H / 2;
 
-  // Clubs on the left semicircle, players on the right semicircle
   const clubs = topClub.slice(0, 7).map((c) => ({
     label: String(c.club ?? ""),
     weight: Number(c.operazioni ?? 1),
@@ -76,12 +114,6 @@ function MiniGraph({
     });
 
   const clubNodes = nodePositions(clubs, (-3 * Math.PI) / 4, (3 * Math.PI) / 4);
-  // flip right side: use negative angles to place on right
-  const playerNodes = nodePositions(players, Math.PI / 4, (-Math.PI) / 4).map((n) => ({
-    ...n,
-    x: cx + (width / 2 - cx) + (n.x - cx) * -1 + cx,
-  }));
-  // Simpler: mirror manually
   const playerPositions = players.map((n, i) => {
     const a =
       players.length === 1
@@ -95,81 +127,48 @@ function MiniGraph({
   return (
     <div ref={containerRef} className="w-full">
       <svg viewBox={`0 0 ${width} ${H}`} width="100%" height={H}>
-        {/* Edges */}
         {allNodes.map((n, i) => (
           <line
             key={`e-${i}`}
-            x1={cx}
-            y1={cy}
-            x2={n.x}
-            y2={n.y}
+            x1={cx} y1={cy} x2={n.x} y2={n.y}
             stroke="#e5e7eb"
             strokeWidth={Math.min(3, 0.5 + n.weight * 0.4)}
             strokeOpacity={0.8}
           />
         ))}
-
-        {/* Peripheral nodes */}
         {allNodes.map((n, i) => {
           const nodeR = Math.min(14, 7 + n.weight * 0.8);
           const color = n.tipo === "club" ? "#e8211a" : "#1a3de8";
           const lbl = n.label.length > 15 ? n.label.slice(0, 14) + "…" : n.label;
-          // Determine label anchor direction from center
           const dx = n.x - cx;
           const anchor = dx > 20 ? "start" : dx < -20 ? "end" : "middle";
           const lx = dx > 20 ? n.x + nodeR + 4 : dx < -20 ? n.x - nodeR - 4 : n.x;
           const ly = n.y + (n.y > cy + 10 ? nodeR + 13 : n.y < cy - 10 ? -nodeR - 5 : 4);
-
           return (
             <g key={`n-${i}`}>
               <circle cx={n.x} cy={n.y} r={nodeR} fill={color} opacity={0.85} />
-              <text
-                x={lx}
-                y={ly}
-                textAnchor={anchor}
-                fontSize={9}
-                fontFamily="'Barlow', sans-serif"
-                fill="#374151"
-              >
+              <text x={lx} y={ly} textAnchor={anchor} fontSize={9}
+                fontFamily="'Barlow', sans-serif" fill="#374151">
                 {lbl}
               </text>
             </g>
           );
         })}
-
-        {/* Center node */}
         <circle cx={cx} cy={cy} r={22} fill="#e86b1a" />
-        <text
-          x={cx}
-          y={cy + 4}
-          textAnchor="middle"
-          fontSize={8}
-          fontFamily="'Barlow Condensed', sans-serif"
-          fill="white"
-          fontWeight="bold"
-        >
-          {agentLabel
-            .split(" ")
-            .map((w) => w[0])
-            .join("")
-            .slice(0, 3)
-            .toUpperCase()}
+        <text x={cx} y={cy + 4} textAnchor="middle" fontSize={8}
+          fontFamily="'Barlow Condensed', sans-serif" fill="white" fontWeight="bold">
+          {agentLabel.split(" ").map((w) => w[0]).join("").slice(0, 3).toUpperCase()}
         </text>
       </svg>
-
-      {/* Legend */}
       <div className="flex items-center gap-5 justify-center mt-1 text-xs text-gray-500">
         <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#e8211a] inline-block" />
-          Club
+          <span className="w-2.5 h-2.5 rounded-full bg-[#e8211a] inline-block" /> Club
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#1a3de8] inline-block" />
-          Giocatori
+          <span className="w-2.5 h-2.5 rounded-full bg-[#1a3de8] inline-block" /> Giocatori
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#e86b1a] inline-block" />
-          Procuratore
+          <span className="w-2.5 h-2.5 rounded-full bg-[#e86b1a] inline-block" /> Procuratore
         </span>
       </div>
     </div>
@@ -214,17 +213,43 @@ export default function ProcuratoreProfilePage() {
   const topClub = (data.topClub as Array<Record<string, unknown>>) ?? [];
   const giocatori = (data.giocatori as Array<Record<string, unknown>>) ?? [];
   const scores = (data.scores as Array<Record<string, unknown>>) ?? [];
+  const dsCollaboratori = (data.dsCollaboratori as Array<Record<string, unknown>>) ?? [];
   const nomeDisplay = String(agent.nome ?? "").trim();
 
+  // IPC score per il badge nell'header
   const ipcScore = scores.find((s) => String(s.tipo_score) === "IPC");
   const ipcValue = ipcScore ? Number(ipcScore.valore) : null;
-  const risk = ipcValue !== null ? SCORE_RISK(ipcValue) : null;
+  const ipcBand = ipcValue !== null ? SCORE_BAND(ipcValue) : null;
+
+  // ── COLLEGAMENTI ────────────────────────────────────────────────────────────
+  const clubLinks: PillItem[] = topClub
+    .filter((c) => c.club_id)
+    .map((c) => ({
+      id: c.club_id,
+      nome: String(c.club ?? ""),
+      sub: c.campionato ? String(c.campionato) : undefined,
+    }));
+
+  const giocatoriLinks: PillItem[] = giocatori.map((g) => ({
+    id: g.id,
+    nome: String(g.nome ?? ""),
+    sub: g.ruolo ? String(g.ruolo) : undefined,
+  }));
+
+  const dsLinks: PillItem[] = dsCollaboratori.map((ds) => ({
+    id: ds.id,
+    nome: String(ds.nome ?? ""),
+    sub: `${String(ds.operazioni)} op.`,
+  }));
+
+  const hasCollegamenti =
+    clubLinks.length > 0 || giocatoriLinks.length > 0 || dsLinks.length > 0;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-10">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-xs text-gray-400 mb-6">
-        <Link href="/agents" className="hover:text-primary">
+        <Link href="/procuratori" className="hover:text-primary">
           Procuratori
         </Link>
         <span>/</span>
@@ -268,17 +293,17 @@ export default function ProcuratoreProfilePage() {
             </div>
           </div>
 
-          {/* IPC score badge */}
-          {ipcValue !== null && risk && (
-            <div className={`shrink-0 border px-4 py-3 text-center min-w-[90px] ${risk.cls}`}>
+          {/* IPC badge */}
+          {ipcValue !== null && ipcBand && (
+            <div className={`shrink-0 border px-4 py-3 text-center min-w-[90px] ${ipcBand.cls}`}>
               <div
                 className="text-3xl font-black leading-none"
                 style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
               >
-                {ipcValue.toFixed(0)}
+                {ipcValue.toFixed(1)}
               </div>
               <div className="text-xs font-bold uppercase tracking-wide mt-1">IPC</div>
-              <div className="text-[10px] mt-0.5">{risk.label}</div>
+              <div className="text-[10px] mt-0.5">{ipcBand.label}</div>
             </div>
           )}
 
@@ -293,7 +318,7 @@ export default function ProcuratoreProfilePage() {
       </div>
 
       {/* Stats strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {[
           { label: "Trasferimenti", value: String(agent.totale_trasferimenti ?? 0) },
           { label: "Giocatori assistiti", value: String(agent.giocatori_assistiti ?? 0) },
@@ -318,35 +343,33 @@ export default function ProcuratoreProfilePage() {
         ))}
       </div>
 
-      {/* All other scores */}
+      {/* ── SCORE ───────────────────────────────────────────────────────────────── */}
       {scores.length > 0 && (
-        <div className="mb-10">
+        <div className="mb-8">
           <h2
             className="text-xl font-black uppercase tracking-tight mb-4"
             style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
           >
-            Score di rischio
+            Score
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
             {scores.map((s) => {
               const v = Number(s.valore);
-              const r2 = SCORE_RISK(v);
+              const band = SCORE_BAND(v);
               return (
-                <div
-                  key={String(s.tipo_score)}
-                  className={`border p-3 text-center ${r2.cls}`}
-                >
+                <div key={String(s.tipo_score)} className={`border p-3 text-center ${band.cls}`}>
                   <div
                     className="text-2xl font-black leading-none mb-1"
                     style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
                   >
-                    {v.toFixed(0)}
+                    {v.toFixed(1)}
                   </div>
                   <div className="text-xs font-bold uppercase tracking-wide">
                     {String(s.tipo_score)}
                   </div>
+                  <div className="text-[10px] mt-0.5 opacity-80">{band.label}</div>
                   {s.operazioni_base && (
-                    <div className="text-[10px] mt-1 opacity-70">
+                    <div className="text-[10px] mt-0.5 opacity-60">
                       {String(s.operazioni_base)} op.
                     </div>
                   )}
@@ -357,9 +380,26 @@ export default function ProcuratoreProfilePage() {
         </div>
       )}
 
+      {/* ── COLLEGAMENTI ──────────────────────────────────────────────────────── */}
+      {hasCollegamenti && (
+        <div className="mb-8">
+          <h2
+            className="text-xl font-black uppercase tracking-tight mb-4"
+            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          >
+            Collegamenti
+          </h2>
+          <div className="border border-gray-200 p-5 space-y-5">
+            <PillGroup title="Club con cui ha lavorato" items={clubLinks} href={(id) => `/clubs/${id}`} />
+            <PillGroup title="Giocatori gestiti" items={giocatoriLinks} href={(id) => `/giocatori/${id}`} />
+            <PillGroup title="DS con cui ha collaborato" items={dsLinks} href={(id) => `/ds/${id}`} />
+          </div>
+        </div>
+      )}
+
       {/* Grafo relazioni */}
       {(topClub.length > 0 || giocatori.length > 0) && (
-        <div className="mb-10">
+        <div className="mb-8">
           <h2
             className="text-xl font-black uppercase tracking-tight mb-4"
             style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
@@ -442,7 +482,6 @@ export default function ProcuratoreProfilePage() {
 
         {/* Sidebar */}
         <div className="space-y-8">
-          {/* Top club */}
           <div>
             <h3
               className="text-lg font-black uppercase tracking-tight mb-3"
@@ -464,7 +503,13 @@ export default function ProcuratoreProfilePage() {
                       {i + 1}
                     </span>
                     <div>
-                      <div className="text-sm font-semibold">{String(c.club)}</div>
+                      {c.club_id ? (
+                        <Link href={`/clubs/${c.club_id}`} className="text-sm font-semibold hover:text-primary">
+                          {String(c.club)}
+                        </Link>
+                      ) : (
+                        <div className="text-sm font-semibold">{String(c.club)}</div>
+                      )}
                       {c.campionato && (
                         <div className="text-xs text-gray-400">{String(c.campionato)}</div>
                       )}
@@ -482,7 +527,6 @@ export default function ProcuratoreProfilePage() {
             </div>
           </div>
 
-          {/* Giocatori assistiti */}
           <div>
             <h3
               className="text-lg font-black uppercase tracking-tight mb-3"

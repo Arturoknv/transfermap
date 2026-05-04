@@ -1,9 +1,11 @@
+import time
 from datetime import datetime
 from utils.database import get_rows, execute
 import json
 
 def salva_score(entita_tipo, entita_id, entita_id_2, tipo_score,
                 stagione, finestra_temporale, valore, operazioni_base, dettaglio):
+    time.sleep(0.1)
     execute("""
         INSERT INTO score_concentrazione
         (entita_tipo, entita_id, entita_id_2, tipo_score,

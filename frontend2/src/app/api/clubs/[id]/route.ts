@@ -28,6 +28,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     // Acquisti
     const acquisti = await query(
       `SELECT t.id, t.stagione, t.tipo, t.fee,
+              g.id as giocatore_id,
               g.nome || ' ' || COALESCE(g.cognome,'') as giocatore_nome, g.ruolo,
               cp.nome as club_partenza, cp.campionato as camp_partenza,
               pr.nome || ' ' || COALESCE(pr.cognome,'') as procuratore_nome
@@ -66,7 +67,35 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       [clubId]
     );
 
-    return NextResponse.json({ club, acquisti, topProcuratori, scores });
+    // Giocatori ceduti
+    const vendite = await query(
+      `SELECT t.id, t.stagione, t.tipo, t.fee,
+              g.id as giocatore_id,
+              g.nome || ' ' || COALESCE(g.cognome,'') as giocatore_nome, g.ruolo,
+              ca.nome as club_arrivo, ca.campionato as camp_arrivo
+       FROM trasferimenti_ufficiali t
+       LEFT JOIN giocatori g ON t.giocatore_id = g.id
+       LEFT JOIN club ca ON t.club_arrivo_id = ca.id
+       WHERE t.club_partenza_id = ?
+       ORDER BY t.stagione DESC, t.id DESC
+       LIMIT 50`,
+      [clubId]
+    );
+
+    // Top DS
+    const topDS = await query(
+      `SELECT ds.id, ds.nome || ' ' || COALESCE(ds.cognome,'') as nome,
+              COUNT(t.id) as operazioni
+       FROM trasferimenti_ufficiali t
+       JOIN direttori_sportivi ds ON t.ds_id = ds.id
+       WHERE t.club_arrivo_id = ? OR t.club_partenza_id = ?
+       GROUP BY ds.id
+       ORDER BY operazioni DESC
+       LIMIT 8`,
+      [clubId, clubId]
+    );
+
+    return NextResponse.json({ club, acquisti, topProcuratori, scores, vendite, topDS });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Database error" }, { status: 500 });

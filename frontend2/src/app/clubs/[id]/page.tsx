@@ -11,6 +11,14 @@ const TIPO_COLORS: Record<string, string> = {
   svincolo: "bg-gray-100 text-gray-700",
 };
 
+// Score thresholds: > 7 red, 4-7 yellow, < 4 green
+const SCORE_BAND = (v: number) =>
+  v > 7
+    ? { cls: "bg-red-100 text-red-800 border-red-200", label: "Anomalo" }
+    : v >= 4
+    ? { cls: "bg-yellow-100 text-yellow-800 border-yellow-200", label: "Attenzione" }
+    : { cls: "bg-green-100 text-green-800 border-green-200", label: "Normale" };
+
 function formatFee(fee: unknown): string {
   const n = Number(fee);
   if (!fee || fee === "None" || isNaN(n) || n <= 0) return "—";
@@ -19,12 +27,41 @@ function formatFee(fee: unknown): string {
     : `${Math.round(n / 1_000)} K €`;
 }
 
-function ScoreBadge({ valore }: { valore: number }) {
-  const color = valore >= 60 ? "bg-red-100 text-red-700" : valore >= 40 ? "bg-yellow-100 text-yellow-700" : "bg-green-100 text-green-700";
+type PillItem = { id: unknown; nome: string; sub?: string };
+
+function PillGroup({
+  title,
+  items,
+  href,
+}: {
+  title: string;
+  items: PillItem[];
+  href: (id: unknown) => string;
+}) {
+  if (items.length === 0) return null;
   return (
-    <span className={`text-xs font-black px-2 py-0.5 ${color}`} style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
-      {valore.toFixed(0)}
-    </span>
+    <div>
+      <div
+        className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2"
+        style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+      >
+        {title}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((item) => (
+          <Link
+            key={String(item.id)}
+            href={href(item.id)}
+            className="inline-flex flex-col text-xs border border-gray-200 px-2.5 py-1.5 hover:border-primary hover:text-primary transition-colors leading-tight max-w-[200px]"
+          >
+            <span className="font-semibold truncate">{item.nome}</span>
+            {item.sub && (
+              <span className="text-[10px] text-gray-400 truncate">{item.sub}</span>
+            )}
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -41,25 +78,88 @@ export default function ClubProfilePage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) return (
-    <div className="flex items-center justify-center py-32">
-      <div className="animate-pulse text-sm font-bold uppercase tracking-widest text-gray-400" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>Caricamento...</div>
-    </div>
-  );
-  if (!data || (data as Record<string, unknown>).error) return (
-    <div className="max-w-4xl mx-auto px-4 py-16 text-center text-gray-500">Club non trovato.</div>
-  );
+  if (loading)
+    return (
+      <div className="flex items-center justify-center py-32">
+        <div
+          className="animate-pulse text-sm font-bold uppercase tracking-widest text-gray-400"
+          style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+        >
+          Caricamento...
+        </div>
+      </div>
+    );
+
+  if (!data || (data as Record<string, unknown>).error)
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-16 text-center text-gray-500">
+        Club non trovato.
+      </div>
+    );
 
   const club = data.club as Record<string, unknown>;
   const acquisti = (data.acquisti as Array<Record<string, unknown>>) ?? [];
   const topProcuratori = (data.topProcuratori as Array<Record<string, unknown>>) ?? [];
   const scores = (data.scores as Array<Record<string, unknown>>) ?? [];
+  const vendite = (data.vendite as Array<Record<string, unknown>>) ?? [];
+  const topDS = (data.topDS as Array<Record<string, unknown>>) ?? [];
   const nomeClub = String(club.nome ?? "");
+
+  // ── COLLEGAMENTI: dedup per ID ──────────────────────────────────────────────
+  const giocAcquisti: PillItem[] = Array.from(
+    new Map(
+      acquisti
+        .filter((t) => t.giocatore_id)
+        .map((t) => [
+          t.giocatore_id,
+          {
+            id: t.giocatore_id,
+            nome: String(t.giocatore_nome ?? ""),
+            sub: t.ruolo ? String(t.ruolo) : undefined,
+          },
+        ])
+    ).values()
+  );
+
+  const giocVendite: PillItem[] = Array.from(
+    new Map(
+      vendite
+        .filter((t) => t.giocatore_id)
+        .map((t) => [
+          t.giocatore_id,
+          {
+            id: t.giocatore_id,
+            nome: String(t.giocatore_nome ?? ""),
+            sub: t.ruolo ? String(t.ruolo) : undefined,
+          },
+        ])
+    ).values()
+  );
+
+  const dsLinks: PillItem[] = topDS.map((ds) => ({
+    id: ds.id,
+    nome: String(ds.nome ?? ""),
+    sub: `${String(ds.operazioni)} op.`,
+  }));
+
+  const procuratoriLinks: PillItem[] = topProcuratori.map((p) => ({
+    id: p.id,
+    nome: String(p.nome ?? ""),
+    sub: `${String(p.operazioni)} op.`,
+  }));
+
+  const hasCollegamenti =
+    giocAcquisti.length > 0 ||
+    giocVendite.length > 0 ||
+    dsLinks.length > 0 ||
+    procuratoriLinks.length > 0;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-10">
       <div className="flex items-center gap-2 text-xs text-gray-400 mb-6">
-        <Link href="/clubs" className="hover:text-primary">Club</Link>
+        <Link href="/clubs" className="hover:text-primary">
+          Club
+        </Link>
         <span>/</span>
         <span className="text-gray-700">{nomeClub}</span>
       </div>
@@ -79,10 +179,16 @@ export default function ClubProfilePage() {
             </div>
             <div className="flex flex-wrap gap-3 ml-4">
               {club.campionato && (
-                <span className="text-sm bg-blue-100 text-blue-800 font-bold uppercase tracking-wider px-2 py-0.5 text-xs">{String(club.campionato)}</span>
+                <span className="text-sm bg-blue-100 text-blue-800 font-bold uppercase tracking-wider px-2 py-0.5 text-xs">
+                  {String(club.campionato)}
+                </span>
               )}
-              {club.citta && <span className="text-sm text-gray-500">{String(club.citta)}</span>}
-              {club.regione && <span className="text-sm text-gray-400">{String(club.regione)}</span>}
+              {club.citta && (
+                <span className="text-sm text-gray-500">{String(club.citta)}</span>
+              )}
+              {club.regione && (
+                <span className="text-sm text-gray-400">{String(club.regione)}</span>
+              )}
             </div>
           </div>
           <button
@@ -96,12 +202,24 @@ export default function ClubProfilePage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {[
           { label: "Acquisti", value: String(club.acquisti ?? 0) },
           { label: "Vendite", value: String(club.vendite ?? 0) },
-          { label: "Spesa", value: Number(club.spesa_mln) > 0 ? `${Number(club.spesa_mln).toFixed(1)} mln €` : "—" },
-          { label: "Incasso", value: Number(club.incasso_mln) > 0 ? `${Number(club.incasso_mln).toFixed(1)} mln €` : "—" },
+          {
+            label: "Spesa",
+            value:
+              Number(club.spesa_mln) > 0
+                ? `${Number(club.spesa_mln).toFixed(1)} mln €`
+                : "—",
+          },
+          {
+            label: "Incasso",
+            value:
+              Number(club.incasso_mln) > 0
+                ? `${Number(club.incasso_mln).toFixed(1)} mln €`
+                : "—",
+          },
         ].map((s) => (
           <div key={s.label} className="border border-gray-200 p-4">
             <div
@@ -115,8 +233,82 @@ export default function ClubProfilePage() {
         ))}
       </div>
 
+      {/* ── SCORE ───────────────────────────────────────────────────────────────── */}
+      {scores.length > 0 && (
+        <div className="mb-8">
+          <h2
+            className="text-xl font-black uppercase tracking-tight mb-4"
+            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          >
+            Score
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {scores.map((s) => {
+              const v = Number(s.valore);
+              const band = SCORE_BAND(v);
+              return (
+                <div key={String(s.tipo_score)} className={`border p-3 text-center ${band.cls}`}>
+                  <div
+                    className="text-2xl font-black leading-none mb-1"
+                    style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                  >
+                    {v.toFixed(1)}
+                  </div>
+                  <div className="text-xs font-bold uppercase tracking-wide">
+                    {String(s.tipo_score)}
+                  </div>
+                  <div className="text-[10px] mt-0.5 opacity-80">{band.label}</div>
+                  {s.operazioni_base && (
+                    <div className="text-[10px] mt-0.5 opacity-60">
+                      {String(s.operazioni_base)} op.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <Link href="/metodologia" className="text-xs text-primary hover:underline mt-2 block">
+            Come vengono calcolati gli score? →
+          </Link>
+        </div>
+      )}
+
+      {/* ── COLLEGAMENTI ──────────────────────────────────────────────────────── */}
+      {hasCollegamenti && (
+        <div className="mb-8">
+          <h2
+            className="text-xl font-black uppercase tracking-tight mb-4"
+            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          >
+            Collegamenti
+          </h2>
+          <div className="border border-gray-200 p-5 space-y-5">
+            <PillGroup
+              title="Giocatori acquistati"
+              items={giocAcquisti}
+              href={(id) => `/giocatori/${id}`}
+            />
+            <PillGroup
+              title="Giocatori ceduti"
+              items={giocVendite}
+              href={(id) => `/giocatori/${id}`}
+            />
+            <PillGroup
+              title="Direttori Sportivi"
+              items={dsLinks}
+              href={(id) => `/ds/${id}`}
+            />
+            <PillGroup
+              title="Procuratori"
+              items={procuratoriLinks}
+              href={(id) => `/procuratori/${id}`}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-3 gap-8">
-        {/* Acquisti */}
+        {/* Acquisti recenti */}
         <div className="lg:col-span-2">
           <h2
             className="text-xl font-black uppercase tracking-tight mb-4"
@@ -139,17 +331,28 @@ export default function ClubProfilePage() {
                 {acquisti.map((t) => (
                   <tr key={String(t.id)} className="table-row-hover">
                     <td>
-                      <Link href={`/giocatori/${t.giocatore_id ?? ""}`} className="font-semibold text-sm hover:text-primary">
+                      <Link
+                        href={`/giocatori/${t.giocatore_id ?? ""}`}
+                        className="font-semibold text-sm hover:text-primary"
+                      >
                         {String(t.giocatore_nome ?? "—")}
                       </Link>
-                      {t.ruolo && <div className="text-xs text-gray-400">{String(t.ruolo)}</div>}
+                      {t.ruolo && (
+                        <div className="text-xs text-gray-400">{String(t.ruolo)}</div>
+                      )}
                     </td>
                     <td className="text-xs text-gray-600">
                       <div>{t.club_partenza ? String(t.club_partenza) : "—"}</div>
-                      {t.camp_partenza && <div className="text-gray-400">{String(t.camp_partenza)}</div>}
+                      {t.camp_partenza && (
+                        <div className="text-gray-400">{String(t.camp_partenza)}</div>
+                      )}
                     </td>
                     <td>
-                      <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-sm ${TIPO_COLORS[String(t.tipo)] ?? "bg-gray-100 text-gray-700"}`}>
+                      <span
+                        className={`text-xs font-bold uppercase px-2 py-0.5 rounded-sm ${
+                          TIPO_COLORS[String(t.tipo)] ?? "bg-gray-100 text-gray-700"
+                        }`}
+                      >
                         {String(t.tipo ?? "—")}
                       </span>
                     </td>
@@ -158,7 +361,11 @@ export default function ClubProfilePage() {
                   </tr>
                 ))}
                 {acquisti.length === 0 && (
-                  <tr><td colSpan={5} className="text-center py-8 text-gray-400">Nessun acquisto registrato</td></tr>
+                  <tr>
+                    <td colSpan={5} className="text-center py-8 text-gray-400">
+                      Nessun acquisto registrato
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -167,7 +374,7 @@ export default function ClubProfilePage() {
 
         {/* Sidebar */}
         <div className="space-y-8">
-          {/* Procuratori */}
+          {/* Procuratori attivi */}
           <div>
             <h3
               className="text-lg font-black uppercase tracking-tight mb-3"
@@ -177,48 +384,76 @@ export default function ClubProfilePage() {
             </h3>
             <div className="space-y-2">
               {topProcuratori.map((p, i) => (
-                <div key={String(p.id)} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                <div
+                  key={String(p.id)}
+                  className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
+                >
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-gray-400 w-4" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>{i + 1}</span>
-                    <Link href={`/procuratori/${p.id}`} className="text-sm font-medium hover:text-primary">
+                    <span
+                      className="text-xs font-black text-gray-400 w-4"
+                      style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                    >
+                      {i + 1}
+                    </span>
+                    <Link
+                      href={`/procuratori/${p.id}`}
+                      className="text-sm font-medium hover:text-primary"
+                    >
                       {String(p.nome)}
                     </Link>
                   </div>
-                  <span className="text-sm font-black text-primary" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
+                  <span
+                    className="text-sm font-black text-primary"
+                    style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                  >
                     {String(p.operazioni)}
                   </span>
                 </div>
               ))}
-              {topProcuratori.length === 0 && <p className="text-sm text-gray-400">Nessun dato</p>}
+              {topProcuratori.length === 0 && (
+                <p className="text-sm text-gray-400">Nessun dato</p>
+              )}
             </div>
           </div>
 
-          {/* Score */}
-          {scores.length > 0 && (
+          {/* DS attivi */}
+          {topDS.length > 0 && (
             <div>
               <h3
                 className="text-lg font-black uppercase tracking-tight mb-3"
                 style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
               >
-                Score & Alert
+                Direttori Sportivi
               </h3>
               <div className="space-y-2">
-                {scores.map((s) => (
-                  <div key={String(s.id)} className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
-                    <ScoreBadge valore={Number(s.valore)} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold">{String(s.tipo_score)}</div>
-                      {s.entita_2_nome && (
-                        <div className="text-xs text-gray-500">vs {String(s.entita_2_nome)}</div>
-                      )}
-                      <div className="text-xs text-gray-400">{String(s.operazioni_base ?? 0)} operazioni base</div>
+                {topDS.map((ds, i) => (
+                  <div
+                    key={String(ds.id)}
+                    className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="text-xs font-black text-gray-400 w-4"
+                        style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                      >
+                        {i + 1}
+                      </span>
+                      <Link
+                        href={`/ds/${ds.id}`}
+                        className="text-sm font-medium hover:text-primary"
+                      >
+                        {String(ds.nome)}
+                      </Link>
                     </div>
+                    <span
+                      className="text-sm font-black text-primary"
+                      style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                    >
+                      {String(ds.operazioni)}
+                    </span>
                   </div>
                 ))}
               </div>
-              <Link href="/metodologia" className="text-xs text-primary hover:underline mt-2 block">
-                Cos'è lo score ICC? →
-              </Link>
             </div>
           )}
         </div>

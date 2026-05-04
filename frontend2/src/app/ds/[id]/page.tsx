@@ -11,6 +11,14 @@ const TIPO_COLORS: Record<string, string> = {
   svincolo: "bg-gray-100 text-gray-700",
 };
 
+// Score thresholds: > 7 red, 4-7 yellow, < 4 green
+const SCORE_BAND = (v: number) =>
+  v > 7
+    ? { cls: "bg-red-100 text-red-800 border-red-200", label: "Anomalo" }
+    : v >= 4
+    ? { cls: "bg-yellow-100 text-yellow-800 border-yellow-200", label: "Attenzione" }
+    : { cls: "bg-green-100 text-green-800 border-green-200", label: "Normale" };
+
 function formatFee(fee: unknown): string {
   const n = Number(fee);
   if (!fee || fee === "None" || isNaN(n) || n <= 0) return "—";
@@ -19,10 +27,49 @@ function formatFee(fee: unknown): string {
     : `${Math.round(n / 1_000)} K €`;
 }
 
+type PillItem = { id: unknown; nome: string; sub?: string };
+
+function PillGroup({
+  title,
+  items,
+  href,
+}: {
+  title: string;
+  items: PillItem[];
+  href: (id: unknown) => string;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <div
+        className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2"
+        style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+      >
+        {title}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((item) => (
+          <Link
+            key={String(item.id)}
+            href={href(item.id)}
+            className="inline-flex flex-col text-xs border border-gray-200 px-2.5 py-1.5 hover:border-primary hover:text-primary transition-colors leading-tight max-w-[200px]"
+          >
+            <span className="font-semibold truncate">{item.nome}</span>
+            {item.sub && (
+              <span className="text-[10px] text-gray-400 truncate">{item.sub}</span>
+            )}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function DSProfilePage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [vista, setVista] = useState<"club" | "stagione">("club");
   const { openDrawer } = useSegnalazioni();
 
   useEffect(() => {
@@ -53,6 +100,7 @@ export default function DSProfilePage() {
 
   const ds = data.ds as Record<string, unknown>;
   const storico = (data.storico as Array<Record<string, unknown>>) ?? [];
+  const scores = (data.scores as Array<Record<string, unknown>>) ?? [];
   const nomeDisplay = `${String(ds.nome ?? "")} ${String(ds.cognome ?? "")}`.trim();
 
   // Raggruppa per club
@@ -71,7 +119,50 @@ export default function DSProfilePage() {
     return acc;
   }, {});
 
-  const [vista, setVista] = useState<"club" | "stagione">("club");
+  // ── COLLEGAMENTI: dedup per ID ──────────────────────────────────────────────
+  const clubLinks: PillItem[] = Array.from(
+    new Map(
+      storico
+        .filter((t) => t.club_id)
+        .map((t) => [
+          t.club_id,
+          {
+            id: t.club_id,
+            nome: String(t.club_nome ?? ""),
+            sub: t.campionato ? String(t.campionato) : undefined,
+          },
+        ])
+    ).values()
+  );
+
+  const giocatoriLinks: PillItem[] = Array.from(
+    new Map(
+      storico
+        .filter((t) => t.giocatore_id)
+        .map((t) => [
+          t.giocatore_id,
+          {
+            id: t.giocatore_id,
+            nome: String(t.giocatore_nome ?? ""),
+            sub: t.giocatore_ruolo ? String(t.giocatore_ruolo) : undefined,
+          },
+        ])
+    ).values()
+  );
+
+  const procuratoriLinks: PillItem[] = Array.from(
+    new Map(
+      storico
+        .filter((t) => t.procuratore_id && String(t.procuratore_nome ?? "").trim())
+        .map((t) => [
+          t.procuratore_id,
+          { id: t.procuratore_id, nome: String(t.procuratore_nome ?? "").trim() },
+        ])
+    ).values()
+  );
+
+  const hasCollegamenti =
+    clubLinks.length > 0 || giocatoriLinks.length > 0 || procuratoriLinks.length > 0;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
@@ -88,7 +179,7 @@ export default function DSProfilePage() {
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-1 h-10 bg-primary" style={{ backgroundColor: "#1a3de8" }} />
+              <div className="w-1 h-10 bg-primary" />
               <h1
                 className="text-4xl md:text-5xl font-black uppercase tracking-tight"
                 style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
@@ -100,7 +191,10 @@ export default function DSProfilePage() {
               {ds.club_attuale_nome && (
                 <span className="text-sm text-gray-600">
                   Club attuale:{" "}
-                  <Link href={`/clubs/${ds.club_attuale_id}`} className="font-bold hover:text-primary">
+                  <Link
+                    href={`/clubs/${ds.club_attuale_id}`}
+                    className="font-bold hover:text-primary"
+                  >
                     {String(ds.club_attuale_nome)}
                   </Link>
                 </span>
@@ -123,7 +217,7 @@ export default function DSProfilePage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-10">
+      <div className="grid grid-cols-3 gap-4 mb-8">
         {[
           { label: "Trasferimenti totali", value: String(ds.totale_trasferimenti ?? 0) },
           { label: "Club gestiti", value: String(Object.keys(byClub).length) },
@@ -141,6 +235,72 @@ export default function DSProfilePage() {
         ))}
       </div>
 
+      {/* ── SCORE ───────────────────────────────────────────────────────────────── */}
+      {scores.length > 0 && (
+        <div className="mb-8">
+          <h2
+            className="text-xl font-black uppercase tracking-tight mb-4"
+            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          >
+            Score
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {scores.map((s) => {
+              const v = Number(s.valore);
+              const band = SCORE_BAND(v);
+              return (
+                <div key={String(s.tipo_score)} className={`border p-3 text-center ${band.cls}`}>
+                  <div
+                    className="text-2xl font-black leading-none mb-1"
+                    style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                  >
+                    {v.toFixed(1)}
+                  </div>
+                  <div className="text-xs font-bold uppercase tracking-wide">
+                    {String(s.tipo_score)}
+                  </div>
+                  <div className="text-[10px] mt-0.5 opacity-80">{band.label}</div>
+                  {s.operazioni_base && (
+                    <div className="text-[10px] mt-0.5 opacity-60">
+                      {String(s.operazioni_base)} op.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── COLLEGAMENTI ──────────────────────────────────────────────────────── */}
+      {hasCollegamenti && (
+        <div className="mb-8">
+          <h2
+            className="text-xl font-black uppercase tracking-tight mb-4"
+            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          >
+            Collegamenti
+          </h2>
+          <div className="border border-gray-200 p-5 space-y-5">
+            <PillGroup
+              title="Club gestiti"
+              items={clubLinks}
+              href={(id) => `/clubs/${id}`}
+            />
+            <PillGroup
+              title="Giocatori acquistati"
+              items={giocatoriLinks}
+              href={(id) => `/giocatori/${id}`}
+            />
+            <PillGroup
+              title="Procuratori con cui ha lavorato"
+              items={procuratoriLinks}
+              href={(id) => `/procuratori/${id}`}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Storico — toggle vista */}
       <div className="flex items-center justify-between mb-6">
         <h2
@@ -155,9 +315,7 @@ export default function DSProfilePage() {
               key={v}
               onClick={() => setVista(v)}
               className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-colors ${
-                vista === v
-                  ? "bg-primary text-white"
-                  : "text-gray-500 hover:text-primary"
+                vista === v ? "bg-primary text-white" : "text-gray-500 hover:text-primary"
               }`}
               style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
             >
@@ -172,7 +330,7 @@ export default function DSProfilePage() {
           Nessun trasferimento registrato per questo DS.
         </p>
       ) : vista === "stagione" ? (
-        /* ── Vista per stagione ─────────────────────────────── */
+        /* Vista per stagione */
         <div className="space-y-6">
           {Object.entries(byStagione)
             .sort(([a], [b]) => b.localeCompare(a))
@@ -233,12 +391,11 @@ export default function DSProfilePage() {
             ))}
         </div>
       ) : (
-        /* ── Vista per club (default) ───────────────────────── */
+        /* Vista per club (default) */
         <div className="space-y-8">
           {Object.entries(byClub).map(([clubNome, items]) => {
             const firstItem = items[0];
             const clubId = firstItem.club_id;
-            // Raggruppa per stagione (dentro club)
             const byClubStagione = items.reduce<Record<string, typeof items>>((acc, t) => {
               const s = String(t.stagione ?? "N/D");
               if (!acc[s]) acc[s] = [];
@@ -249,7 +406,7 @@ export default function DSProfilePage() {
             return (
               <div key={clubNome}>
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-1 h-5 bg-primary" style={{ backgroundColor: "#1a3de8" }} />
+                  <div className="w-1 h-5 bg-primary" />
                   <h3
                     className="text-lg font-black uppercase tracking-tight"
                     style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
@@ -284,10 +441,14 @@ export default function DSProfilePage() {
                           {ts.map((t, idx) => (
                             <div
                               key={String(t.id)}
-                              className={`flex items-center gap-4 px-4 py-3 ${idx < ts.length - 1 ? "border-b border-gray-100" : ""}`}
+                              className={`flex items-center gap-4 px-4 py-3 ${
+                                idx < ts.length - 1 ? "border-b border-gray-100" : ""
+                              }`}
                             >
                               <span
-                                className={`text-xs font-bold uppercase px-2 py-0.5 rounded-sm shrink-0 ${TIPO_COLORS[String(t.tipo)] ?? "bg-gray-100 text-gray-700"}`}
+                                className={`text-xs font-bold uppercase px-2 py-0.5 rounded-sm shrink-0 ${
+                                  TIPO_COLORS[String(t.tipo)] ?? "bg-gray-100 text-gray-700"
+                                }`}
                               >
                                 {String(t.tipo ?? "—")}
                               </span>

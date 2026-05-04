@@ -48,7 +48,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     // Club più frequenti
     const topClub = await query(
-      `SELECT ca.nome as club, ca.campionato, COUNT(*) as operazioni
+      `SELECT ca.id as club_id, ca.nome as club, ca.campionato, COUNT(*) as operazioni
        FROM trasferimenti_ufficiali t
        JOIN club ca ON t.club_arrivo_id = ca.id
        WHERE t.procuratore_id = ?
@@ -81,7 +81,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       [agentId]
     );
 
-    return NextResponse.json({ agent, trasferimenti, topClub, giocatori, scores });
+    // DS con cui ha collaborato
+    const dsCollaboratori = await query(
+      `SELECT ds.id, ds.nome || ' ' || COALESCE(ds.cognome,'') as nome,
+              COUNT(t.id) as operazioni
+       FROM trasferimenti_ufficiali t
+       JOIN direttori_sportivi ds ON t.ds_id = ds.id
+       WHERE t.procuratore_id = ?
+       GROUP BY ds.id
+       ORDER BY operazioni DESC
+       LIMIT 10`,
+      [agentId]
+    );
+
+    return NextResponse.json({ agent, trasferimenti, topClub, giocatori, scores, dsCollaboratori });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Database error" }, { status: 500 });

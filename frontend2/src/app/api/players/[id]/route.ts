@@ -27,20 +27,32 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const carriera = await query(
       `SELECT t.id, t.stagione, t.tipo, t.fee,
+              t.club_partenza_id, t.club_arrivo_id, t.ds_id,
               cp.nome as club_partenza, cp.campionato as camp_partenza,
               ca.nome as club_arrivo, ca.campionato as camp_arrivo,
               pr.nome || ' ' || COALESCE(pr.cognome,'') as procuratore_nome,
-              pr.id as procuratore_id
+              pr.id as procuratore_id,
+              ds.nome || ' ' || COALESCE(ds.cognome,'') as ds_nome
        FROM trasferimenti_ufficiali t
        LEFT JOIN club cp ON t.club_partenza_id = cp.id
        LEFT JOIN club ca ON t.club_arrivo_id = ca.id
        LEFT JOIN procuratori pr ON t.procuratore_id = pr.id
+       LEFT JOIN direttori_sportivi ds ON t.ds_id = ds.id
        WHERE t.giocatore_id = ?
        ORDER BY t.stagione DESC`,
       [playerId]
     );
 
-    return NextResponse.json({ player, carriera });
+    const scores = await query(
+      `SELECT tipo_score, valore, operazioni_base, finestra_temporale, dettaglio
+       FROM score_concentrazione
+       WHERE entita_tipo = 'giocatore' AND entita_id = ?
+       ORDER BY valore DESC
+       LIMIT 10`,
+      [playerId]
+    );
+
+    return NextResponse.json({ player, carriera, scores });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Database error" }, { status: 500 });

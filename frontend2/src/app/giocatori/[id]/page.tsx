@@ -11,12 +11,58 @@ const TIPO_COLORS: Record<string, string> = {
   svincolo: "bg-gray-100 text-gray-700",
 };
 
+// Score thresholds: > 7 red, 4-7 yellow, < 4 green
+const SCORE_BAND = (v: number) =>
+  v > 7
+    ? { cls: "bg-red-100 text-red-800 border-red-200", label: "Anomalo" }
+    : v >= 4
+    ? { cls: "bg-yellow-100 text-yellow-800 border-yellow-200", label: "Attenzione" }
+    : { cls: "bg-green-100 text-green-800 border-green-200", label: "Normale" };
+
 function formatFee(fee: unknown): string {
   const n = Number(fee);
   if (!fee || fee === "None" || isNaN(n) || n <= 0) return "—";
   return n >= 1_000_000
     ? `${(n / 1_000_000).toFixed(1).replace(".", ",")} mln €`
     : `${Math.round(n / 1_000)} K €`;
+}
+
+type PillItem = { id: unknown; nome: string; sub?: string };
+
+function PillGroup({
+  title,
+  items,
+  href,
+}: {
+  title: string;
+  items: PillItem[];
+  href: (id: unknown) => string;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <div
+        className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2"
+        style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+      >
+        {title}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((item) => (
+          <Link
+            key={String(item.id)}
+            href={href(item.id)}
+            className="inline-flex flex-col text-xs border border-gray-200 px-2.5 py-1.5 hover:border-primary hover:text-primary transition-colors leading-tight max-w-[200px]"
+          >
+            <span className="font-semibold truncate">{item.nome}</span>
+            {item.sub && (
+              <span className="text-[10px] text-gray-400 truncate">{item.sub}</span>
+            )}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function GiocatoreProfilePage() {
@@ -53,6 +99,7 @@ export default function GiocatoreProfilePage() {
 
   const player = data.player as Record<string, unknown>;
   const carriera = (data.carriera as Array<Record<string, unknown>>) ?? [];
+  const scores = (data.scores as Array<Record<string, unknown>>) ?? [];
   const nomePlyr = String(player.nome ?? "").trim();
 
   // Procuratore attuale = quello dell'ultimo trasferimento con procuratore valorizzato
@@ -67,21 +114,79 @@ export default function GiocatoreProfilePage() {
       }
     : null;
 
-  // Raggruppa per stagione
+  // Raggruppa per stagione per storico
   const byStagione = carriera.reduce<Record<string, typeof carriera>>((acc, t) => {
     const s = String(t.stagione ?? "N/D");
     if (!acc[s]) acc[s] = [];
     acc[s].push(t);
     return acc;
   }, {});
-
   const stagioni = Object.keys(byStagione).sort((a, b) => b.localeCompare(a));
+
+  // ── COLLEGAMENTI: dedup per ID ──────────────────────────────────────────────
+  const clubsArrivo: PillItem[] = Array.from(
+    new Map(
+      carriera
+        .filter((t) => t.club_arrivo_id)
+        .map((t) => [
+          t.club_arrivo_id,
+          {
+            id: t.club_arrivo_id,
+            nome: String(t.club_arrivo ?? ""),
+            sub: t.camp_arrivo ? String(t.camp_arrivo) : undefined,
+          },
+        ])
+    ).values()
+  );
+
+  const clubsPartenza: PillItem[] = Array.from(
+    new Map(
+      carriera
+        .filter((t) => t.club_partenza_id)
+        .map((t) => [
+          t.club_partenza_id,
+          {
+            id: t.club_partenza_id,
+            nome: String(t.club_partenza ?? ""),
+            sub: t.camp_partenza ? String(t.camp_partenza) : undefined,
+          },
+        ])
+    ).values()
+  );
+
+  const procuratoriLinks: PillItem[] = Array.from(
+    new Map(
+      carriera
+        .filter((t) => t.procuratore_id && String(t.procuratore_nome ?? "").trim())
+        .map((t) => [
+          t.procuratore_id,
+          { id: t.procuratore_id, nome: String(t.procuratore_nome ?? "").trim() },
+        ])
+    ).values()
+  );
+
+  const dsLinks: PillItem[] = Array.from(
+    new Map(
+      carriera
+        .filter((t) => t.ds_id && String(t.ds_nome ?? "").trim())
+        .map((t) => [
+          t.ds_id,
+          { id: t.ds_id, nome: String(t.ds_nome ?? "").trim() },
+        ])
+    ).values()
+  );
+
+  const hasCollegamenti =
+    clubsArrivo.length > 0 ||
+    clubsPartenza.length > 0 ||
+    procuratoriLinks.length > 0 ||
+    dsLinks.length > 0;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-xs text-gray-400 mb-6">
-        <Link href="/players" className="hover:text-primary">
+        <Link href="/giocatori" className="hover:text-primary">
           Giocatori
         </Link>
         <span>/</span>
@@ -128,11 +233,12 @@ export default function GiocatoreProfilePage() {
       </div>
 
       {/* Info cards: club attuale + procuratore attuale */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
-        {/* Club attuale */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
         <div className="border border-gray-200 p-5">
-          <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2"
-            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
+          <div
+            className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2"
+            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          >
             Club attuale
           </div>
           {player.club_attuale_nome ? (
@@ -152,10 +258,11 @@ export default function GiocatoreProfilePage() {
           )}
         </div>
 
-        {/* Procuratore attuale */}
         <div className="border border-gray-200 p-5">
-          <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2"
-            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
+          <div
+            className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2"
+            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          >
             Procuratore attuale
           </div>
           {procuratoreAttuale ? (
@@ -178,14 +285,13 @@ export default function GiocatoreProfilePage() {
       </div>
 
       {/* Stats strip */}
-      <div className="grid grid-cols-3 gap-4 mb-10">
+      <div className="grid grid-cols-3 gap-4 mb-8">
         {[
           { label: "Trasferimenti", value: String(player.totale_trasferimenti ?? 0) },
           { label: "Stagioni", value: String(stagioni.length) },
           {
             label: "Valore mercato",
-            value:
-              Number(player.valore_mercato) > 0 ? formatFee(player.valore_mercato) : "N/D",
+            value: Number(player.valore_mercato) > 0 ? formatFee(player.valore_mercato) : "N/D",
           },
         ].map((s) => (
           <div key={s.label} className="border border-gray-200 p-4">
@@ -199,6 +305,77 @@ export default function GiocatoreProfilePage() {
           </div>
         ))}
       </div>
+
+      {/* ── COLLEGAMENTI ──────────────────────────────────────────────────────── */}
+      {hasCollegamenti && (
+        <div className="mb-8">
+          <h2
+            className="text-xl font-black uppercase tracking-tight mb-4"
+            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          >
+            Collegamenti
+          </h2>
+          <div className="border border-gray-200 p-5 space-y-5">
+            <PillGroup
+              title="Club di arrivo"
+              items={clubsArrivo}
+              href={(id) => `/clubs/${id}`}
+            />
+            <PillGroup
+              title="Club di partenza"
+              items={clubsPartenza}
+              href={(id) => `/clubs/${id}`}
+            />
+            <PillGroup
+              title="Procuratori"
+              items={procuratoriLinks}
+              href={(id) => `/procuratori/${id}`}
+            />
+            <PillGroup
+              title="Direttori Sportivi"
+              items={dsLinks}
+              href={(id) => `/ds/${id}`}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── SCORE ─────────────────────────────────────────────────────────────── */}
+      {scores.length > 0 && (
+        <div className="mb-8">
+          <h2
+            className="text-xl font-black uppercase tracking-tight mb-4"
+            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          >
+            Score
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {scores.map((s) => {
+              const v = Number(s.valore);
+              const band = SCORE_BAND(v);
+              return (
+                <div key={String(s.tipo_score)} className={`border p-3 text-center ${band.cls}`}>
+                  <div
+                    className="text-2xl font-black leading-none mb-1"
+                    style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                  >
+                    {v.toFixed(1)}
+                  </div>
+                  <div className="text-xs font-bold uppercase tracking-wide">
+                    {String(s.tipo_score)}
+                  </div>
+                  <div className="text-[10px] mt-0.5 opacity-80">{band.label}</div>
+                  {s.operazioni_base && (
+                    <div className="text-[10px] mt-0.5 opacity-60">
+                      {String(s.operazioni_base)} op.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Storico trasferimenti */}
       <h2
