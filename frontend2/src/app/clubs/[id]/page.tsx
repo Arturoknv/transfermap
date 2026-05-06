@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useSegnalazioni } from "@/components/AppShell";
 
+export const runtime = 'edge'; // Cloudflare Pages edge runtime
+
 const TIPO_COLORS: Record<string, string> = {
   definitivo: "bg-green-100 text-green-800",
   prestito: "bg-blue-100 text-blue-800",
