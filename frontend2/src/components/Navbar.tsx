@@ -76,8 +76,8 @@ function Dropdown({
 export default function Navbar({ onSegnala }: { onSegnala?: () => void }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [dbOpen, setDbOpen] = useState(false);
-  const [infoOpen, setInfoOpen] = useState(false);
+  // const [dbOpen, setDbOpen] = useState(false);
+  // const [infoOpen, setInfoOpen] = useState(false);
 
   const isDbActive = DB_LINKS.some((l) => pathname.startsWith(l.href));
   const isInfoActive = INFO_LINKS.some((l) => pathname === l.href);
