@@ -25,3 +25,8 @@ NEXT_PUBLIC_APP_URL = "https://transfermap.it"
 # Variabili richieste:
 #   TURSO_DATABASE_URL  — es. https://xxx-yyy.turso.io  (usare https://, non libsql://)
 #   TURSO_AUTH_TOKEN    — token JWT Turso
+
+# ── Variabili runtime (non-secret per edge runtime) ──────────────────────────
+# Nota: su Cloudflare Pages edge runtime, usare vars per le variabili di connessione
+[vars]
+TURSO_DATABASE_URL = "https://transfermap-db-arturoknv.aws-eu-west-1.turso.io"
