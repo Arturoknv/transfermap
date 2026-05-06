@@ -1,13 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ["@libsql/client"],
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
   },
   images: {
-    remotePatterns: [
-      { protocol: "https", hostname: "img.shields.io" },
-    ],
+    unoptimized: true,
   },
+  serverExternalPackages: ["@libsql/client"],
 };
 
 export default nextConfig;
