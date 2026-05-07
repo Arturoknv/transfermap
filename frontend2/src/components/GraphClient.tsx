@@ -98,7 +98,7 @@ function normalizeClubName(name: string): string {
     "Cagliari Calcio": "Cagliari",
     "US Lecce": "Lecce",
     "US Cremonese": "Cremonese",
-    "Hellas Verona FC": "Hellas Verona",
+    "Hellas Verona FC": "Verona", "Hellas Verona": "Verona",
     "FC Empoli": "Empoli", "Empoli FC": "Empoli",
     "US Salernitana": "Salernitana",
     "Frosinone Calcio": "Frosinone",
@@ -187,18 +187,41 @@ export default function GraphClient() {
       if (search && !dispLabel.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-    const nodeIds = new Set(nodes.map((n) => n.id));
-    const edges = graphData.edges.filter((e) => {
-      const s = typeof e.source === "string" ? e.source : e.source.id;
-      const t = typeof e.target === "string" ? e.target : e.target.id;
-      return nodeIds.has(s) && nodeIds.has(t);
+
+    // Build canonical ID map: merge club nodes with the same normalized name
+    const idToCanonical = new Map<string, string>();
+    const normNameToCanonical = new Map<string, string>();
+    nodes.forEach((n) => {
+      if (n.tipo !== "club") { idToCanonical.set(n.id, n.id); return; }
+      const normLabel = normalizeClubName(n.label);
+      if (normNameToCanonical.has(normLabel)) {
+        idToCanonical.set(n.id, normNameToCanonical.get(normLabel)!);
+      } else {
+        normNameToCanonical.set(normLabel, n.id);
+        idToCanonical.set(n.id, n.id);
+      }
     });
 
-    // Normalize club names for display (preserves id for matching)
-    nodes = nodes.map((n) => ({
-      ...n,
-      label: n.tipo === "club" ? normalizeClubName(n.label) : n.label,
-    }));
+    // Keep only canonical nodes, apply normalized labels
+    nodes = nodes
+      .filter((n) => idToCanonical.get(n.id) === n.id)
+      .map((n) => ({ ...n, label: n.tipo === "club" ? normalizeClubName(n.label) : n.label }));
+    const nodeIds = new Set(nodes.map((n) => n.id));
+
+    // Deduplicate and remap edges through canonical IDs, summing weights
+    const edgeMap = new Map<string, { source: string; target: string; weight: number }>();
+    graphData.edges.forEach((e) => {
+      const origSrc = typeof e.source === "string" ? e.source : (e.source as GraphNode).id;
+      const origTgt = typeof e.target === "string" ? e.target : (e.target as GraphNode).id;
+      const src = idToCanonical.get(origSrc) ?? origSrc;
+      const tgt = idToCanonical.get(origTgt) ?? origTgt;
+      if (!nodeIds.has(src) || !nodeIds.has(tgt) || src === tgt) return;
+      const key = src < tgt ? `${src}↔${tgt}` : `${tgt}↔${src}`;
+      const existing = edgeMap.get(key);
+      if (existing) { existing.weight += e.weight ?? 1; }
+      else { edgeMap.set(key, { source: src, target: tgt, weight: e.weight ?? 1 }); }
+    });
+    const edges = Array.from(edgeMap.values()) as GraphEdge[];
 
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
@@ -269,7 +292,7 @@ export default function GraphClient() {
           const dt = typeof d.target === "object" ? (d.target as GraphNode).id : d.target;
           return (es === ds && et === dt) || (es === dt && et === ds) ? 0.9 : 0.05;
         });
-        node.attr("opacity", (n) => n.id === srcNode.id || n.id === tgtNode.id ? 1 : 0.15);
+        node.attr("opacity", (n) => n.id === srcNode.id || n.id === tgtNode.id ? 1 : 0.05);
         node.select("circle")
           .attr("stroke", (n) => n.id === srcNode.id || n.id === tgtNode.id ? "#1a3de8" : "white")
           .attr("stroke-width", (n) => n.id === srcNode.id || n.id === tgtNode.id ? 3 : 1.5);
@@ -367,7 +390,7 @@ export default function GraphClient() {
         setSelected({ node: d, connections });
 
         // Dim entire node group (circle + label) for non-neighbors
-        node.attr("opacity", (n) => n.id === d.id || connectedIds.has(n.id) ? 1 : 0.15);
+        node.attr("opacity", (n) => n.id === d.id || connectedIds.has(n.id) ? 1 : 0.05);
         node.select("circle")
           .attr("stroke-width", (n) => n.id === d.id ? 3 : 1.5)
           .attr("stroke", (n) => n.id === d.id ? "#1a3de8" : "white");
