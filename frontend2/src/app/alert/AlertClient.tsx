@@ -23,7 +23,6 @@ interface Trasferimento {
   id: number;
   stagione: string;
   tipo: string;
-  fee: unknown;
   giocatore_id: number;
   giocatore_nome: string;
   giocatore_ruolo: string | null;
@@ -66,12 +65,64 @@ const TIPO_COLORS: Record<string, string> = {
   svincolo: "bg-gray-100 text-gray-700",
 };
 
-function formatFee(fee: unknown): string {
-  const n = Number(fee);
-  if (!fee || fee === "None" || isNaN(n) || n <= 0) return "—";
-  return n >= 1_000_000
-    ? `${(n / 1_000_000).toFixed(1).replace(".", ",")} mln €`
-    : `${Math.round(n / 1_000)} K €`;
+/** URL della pagina profilo in base al tipo di entità. */
+function entityHref(tipo: string, id: string): string {
+  if (tipo === "procuratore") return `/procuratori/${id}`;
+  if (tipo === "ds") return `/ds/${id}`;
+  if (tipo === "giocatore") return `/giocatori/${id}`;
+  return `/clubs/${id}`;
+}
+
+/**
+ * Formatta il campo dettaglio JSON in testo leggibile per tipo di score.
+ * Non mostra mai valori monetari — solo conteggi di operazioni e relazioni.
+ */
+function parseDettaglio(row: AlertRow): string {
+  if (!row.dettaglio) return "";
+  let d: Record<string, unknown> = {};
+  try {
+    d = JSON.parse(row.dettaglio);
+  } catch {
+    // Non è JSON valido: restituisce il testo così com'è, ma filtra euro/fee
+    return row.dettaglio.replace(/[\d.,]+\s*(mln\s*)?€/gi, "").trim();
+  }
+
+  const ops = row.operazioni_base;
+
+  switch (row.tipo_score) {
+    case "ICP": {
+      const n = (d.procuratori_distinti ?? d.n_procuratori) as number | undefined;
+      return n != null
+        ? `${n} procuratori ricorrenti su ${ops} operazioni totali`
+        : `${ops} operazioni totali`;
+    }
+    case "IPC": {
+      const n = (d.club_distinti ?? d.n_club) as number | undefined;
+      return n != null
+        ? `Ha lavorato con ${n} club distinti in ${ops} operazioni`
+        : `${ops} operazioni`;
+    }
+    case "ICC": {
+      const c1 = (d.club_1 ?? d.club_partenza) as string | undefined;
+      const c2 = (d.club_2 ?? d.club_arrivo) as string | undefined;
+      const pair =
+        c1 && c2 ? `tra ${c1} e ${c2}` :
+        row.entita_nome && row.entita_2_nome
+          ? `tra ${row.entita_nome} e ${row.entita_2_nome}`
+          : "";
+      return pair ? `${ops} operazioni ${pair}` : `${ops} operazioni`;
+    }
+    case "IMD": {
+      const ds = (d.ds ?? d.direttore_sportivo) as string | undefined;
+      const proc = (d.procuratore) as string | undefined;
+      if (ds && proc) return `DS: ${ds} — Procuratore: ${proc} — ${ops} operazioni`;
+      if (ds) return `DS: ${ds} — ${ops} operazioni`;
+      if (proc) return `Procuratore: ${proc} — ${ops} operazioni`;
+      return `${ops} operazioni`;
+    }
+    default:
+      return `${ops} operazioni`;
+  }
 }
 
 function ScoreBadge({ valore }: { valore: number }) {
@@ -84,7 +135,10 @@ function ScoreBadge({ valore }: { valore: number }) {
   const label = valore >= 60 ? "ALTO" : valore >= 40 ? "MEDIO" : "BASSO";
   return (
     <div className={`inline-flex flex-col items-center px-3 py-1.5 ${color} shrink-0`}>
-      <span className="text-2xl font-black leading-none" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
+      <span
+        className="text-2xl font-black leading-none"
+        style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+      >
         {valore.toFixed(0)}
       </span>
       <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
@@ -92,7 +146,6 @@ function ScoreBadge({ valore }: { valore: number }) {
   );
 }
 
-// Slide-in panel showing the underlying transfers for a score
 function OperazioniPanel({
   detail,
   onClose,
@@ -103,7 +156,6 @@ function OperazioniPanel({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Close on Escape
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -112,7 +164,6 @@ function OperazioniPanel({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Lock body scroll
   useEffect(() => {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
@@ -123,13 +174,7 @@ function OperazioniPanel({
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/30 z-40"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      {/* Panel */}
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
         className="fixed inset-y-0 right-0 z-50 w-full max-w-xl bg-white shadow-2xl flex flex-col"
@@ -190,7 +235,9 @@ function OperazioniPanel({
               <div className="text-sm font-semibold text-gray-700">
                 {SCORE_DESCRIPTIONS[score.tipo_score]?.label ?? score.tipo_score}
               </div>
-              <div className="text-xs text-gray-500">{SCORE_DESCRIPTIONS[score.tipo_score]?.desc}</div>
+              <div className="text-xs text-gray-500">
+                {SCORE_DESCRIPTIONS[score.tipo_score]?.desc}
+              </div>
             </div>
             <Link
               href="/metodologia"
@@ -202,15 +249,20 @@ function OperazioniPanel({
           </div>
         )}
 
-        {/* Transfer list */}
+        {/* Transfer list — NO valori monetari */}
         <div className="flex-1 overflow-y-auto">
           {transfers.length === 0 ? (
             <div className="flex items-center justify-center h-full text-center px-8 py-16 text-gray-400">
               <div>
-                <div className="text-4xl font-black text-gray-200 mb-3" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
+                <div
+                  className="text-4xl font-black text-gray-200 mb-3"
+                  style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                >
                   NESSUN DATO
                 </div>
-                <p className="text-sm">Non è stato possibile recuperare i trasferimenti specifici per questo score.</p>
+                <p className="text-sm">
+                  Non è stato possibile recuperare i trasferimenti specifici per questo score.
+                </p>
               </div>
             </div>
           ) : (
@@ -260,11 +312,9 @@ function OperazioniPanel({
                         </div>
                       )}
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-xs font-mono font-semibold text-gray-700">
-                        {formatFee(t.fee)}
-                      </div>
-                      <div className="text-xs text-gray-400">{t.stagione}</div>
+                    {/* Stagione — nessun valore monetario */}
+                    <div className="text-xs text-gray-400 shrink-0 text-right">
+                      {t.stagione}
                     </div>
                   </div>
                 </div>
@@ -298,7 +348,6 @@ export default function AlertPage() {
   const [tipo, setTipo] = useState("");
   const [soglia, setSoglia] = useState("30");
 
-  // Drill-down panel
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelLoading, setPanelLoading] = useState(false);
   const [panelDetail, setPanelDetail] = useState<ScoreDetail | null>(null);
@@ -357,7 +406,10 @@ export default function AlertPage() {
         {/* Score info banner */}
         {scoreInfo && (
           <div className="bg-blue-50 border border-blue-200 px-4 py-3 mb-6 text-sm">
-            <span className="font-black text-blue-800 mr-2" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
+            <span
+              className="font-black text-blue-800 mr-2"
+              style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+            >
               {tipo}
             </span>
             <span className="font-semibold text-blue-700">{scoreInfo.label}</span>
@@ -458,10 +510,12 @@ export default function AlertPage() {
                       <span className="text-xs text-gray-400">{row.finestra_temporale}</span>
                     )}
                   </div>
+
+                  {/* Entità principale — link corretto per tipo */}
                   <div className="flex items-center gap-2 text-sm flex-wrap">
                     {row.entita_nome ? (
                       <Link
-                        href={`/clubs/${row.entita_id}`}
+                        href={entityHref(row.entita_tipo, row.entita_id)}
                         className="font-semibold hover:text-primary"
                       >
                         {row.entita_nome}
@@ -481,12 +535,14 @@ export default function AlertPage() {
                       </>
                     )}
                   </div>
+
+                  {/* Dettaglio formattato — solo relazioni, nessun valore monetario */}
                   {row.dettaglio && (
-                    <p className="text-xs text-gray-500 mt-1">{row.dettaglio}</p>
+                    <p className="text-xs text-gray-500 mt-1">{parseDettaglio(row)}</p>
                   )}
                 </div>
 
-                {/* Clickable operations count */}
+                {/* Bottone operazioni */}
                 <button
                   onClick={() => openOperazioni(row)}
                   className="text-right shrink-0 group hover:opacity-80 transition-opacity"
@@ -500,7 +556,12 @@ export default function AlertPage() {
                   </div>
                   <div className="text-xs text-gray-400 flex items-center gap-0.5 justify-end">
                     operazioni
-                    <svg className="w-3 h-3 text-primary ml-0.5 opacity-60 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg
+                      className="w-3 h-3 text-primary ml-0.5 opacity-60 group-hover:opacity-100"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
@@ -513,7 +574,9 @@ export default function AlertPage() {
         {/* Paginazione */}
         {data && data.pages > 1 && (
           <div className="flex items-center justify-between mt-8">
-            <span className="text-sm text-gray-500">Pagina {data.page} di {data.pages}</span>
+            <span className="text-sm text-gray-500">
+              Pagina {data.page} di {data.pages}
+            </span>
             <div className="flex gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
@@ -547,7 +610,6 @@ export default function AlertPage() {
         </div>
       </div>
 
-      {/* Operations drill-down panel */}
       {panelOpen && (
         <OperazioniPanel
           detail={panelLoading ? null : panelDetail}

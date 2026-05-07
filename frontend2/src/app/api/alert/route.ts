@@ -33,12 +33,18 @@ export async function GET(req: Request) {
       `SELECT sc.id, sc.tipo_score, sc.valore, sc.operazioni_base,
               sc.entita_tipo, sc.entita_id, sc.entita_id_2,
               sc.finestra_temporale, sc.dettaglio, sc.calcolato_il,
-              c1.nome as entita_nome,
+              COALESCE(
+                c1.nome,
+                p1.nome || ' ' || COALESCE(p1.cognome, ''),
+                ds1.nome || ' ' || COALESCE(ds1.cognome, '')
+              ) as entita_nome,
               c1.campionato as entita_campionato,
               c2.nome as entita_2_nome
        FROM score_concentrazione sc
        LEFT JOIN club c1 ON sc.entita_tipo = 'club' AND sc.entita_id = c1.id
        LEFT JOIN club c2 ON sc.entita_id_2 = c2.id
+       LEFT JOIN procuratori p1 ON sc.entita_tipo = 'procuratore' AND sc.entita_id = p1.id
+       LEFT JOIN direttori_sportivi ds1 ON sc.entita_tipo = 'ds' AND sc.entita_id = ds1.id
        ${where}
        ${PLACEHOLDER_FILTER}
        ORDER BY sc.valore DESC, sc.operazioni_base DESC
@@ -50,6 +56,8 @@ export async function GET(req: Request) {
       `SELECT COUNT(*) as cnt FROM score_concentrazione sc
        LEFT JOIN club c1 ON sc.entita_tipo = 'club' AND sc.entita_id = c1.id
        LEFT JOIN club c2 ON sc.entita_id_2 = c2.id
+       LEFT JOIN procuratori p1 ON sc.entita_tipo = 'procuratore' AND sc.entita_id = p1.id
+       LEFT JOIN direttori_sportivi ds1 ON sc.entita_tipo = 'ds' AND sc.entita_id = ds1.id
        ${where} ${PLACEHOLDER_FILTER}`,
       args
     );
