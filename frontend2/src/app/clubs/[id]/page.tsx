@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import * as d3 from "d3";
 import { useSegnalazioni } from "@/components/AppShell";
 
 export const runtime = 'edge'; // Cloudflare Pages edge runtime
@@ -20,14 +21,6 @@ const SCORE_BAND = (v: number) =>
     : v >= 4
     ? { cls: "bg-yellow-100 text-yellow-800 border-yellow-200", label: "Attenzione" }
     : { cls: "bg-green-100 text-green-800 border-green-200", label: "Normale" };
-
-function formatFee(fee: unknown): string {
-  const n = Number(fee);
-  if (!fee || fee === "None" || isNaN(n) || n <= 0) return "—";
-  return n >= 1_000_000
-    ? `${(n / 1_000_000).toFixed(1).replace(".", ",")} mln €`
-    : `${Math.round(n / 1_000)} K €`;
-}
 
 type PillItem = { id: unknown; nome: string; sub?: string };
 
@@ -67,6 +60,193 @@ function PillGroup({
   );
 }
 
+// ── Mini grafo D3 force simulation ──────────────────────────────────────────
+type NodeDatum = d3.SimulationNodeDatum & {
+  id: string;
+  label: string;
+  type: "club" | "giocatore" | "procuratore" | "ds";
+  href?: string;
+};
+
+const NODE_COLOR: Record<string, string> = {
+  club: "#e8211a",
+  giocatore: "#1a3de8",
+  procuratore: "#e86b1a",
+  ds: "#16a34a",
+};
+const NODE_R: Record<string, number> = { club: 22, giocatore: 9, procuratore: 12, ds: 12 };
+
+function ClubGraph({
+  clubNome,
+  giocatori,
+  procuratori,
+  dsItems,
+}: {
+  clubNome: string;
+  giocatori: PillItem[];
+  procuratori: Array<Record<string, unknown>>;
+  dsItems: Array<Record<string, unknown>>;
+}) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!svgRef.current || !containerRef.current) return;
+
+    const W = containerRef.current.clientWidth || 600;
+    const H = 420;
+    const cx = W / 2;
+    const cy = H / 2;
+
+    // Build node list — club fixed at center
+    const nodes: NodeDatum[] = [
+      { id: "__club__", label: clubNome.slice(0, 20), type: "club", fx: cx, fy: cy },
+      ...giocatori.slice(0, 12).map((g) => ({
+        id: `g_${g.id}`,
+        label: String(g.nome).slice(0, 18),
+        type: "giocatore" as const,
+        href: `/giocatori/${g.id}`,
+      })),
+      ...procuratori.slice(0, 6).map((p) => ({
+        id: `p_${p.id}`,
+        label: String(p.nome ?? "").slice(0, 18),
+        type: "procuratore" as const,
+        href: `/procuratori/${p.id}`,
+      })),
+      ...dsItems.slice(0, 4).map((d) => ({
+        id: `d_${d.id}`,
+        label: String(d.nome ?? "").slice(0, 18),
+        type: "ds" as const,
+        href: `/ds/${d.id}`,
+      })),
+    ];
+
+    // Pre-position peripheral nodes in a circle for a cleaner initial layout
+    const peripherals = nodes.slice(1);
+    peripherals.forEach((n, i) => {
+      const angle = (i / Math.max(peripherals.length, 1)) * 2 * Math.PI - Math.PI / 2;
+      n.x = cx + 150 * Math.cos(angle);
+      n.y = cy + 150 * Math.sin(angle);
+    });
+
+    const links = peripherals.map((n) => ({ source: "__club__", target: n.id }));
+
+    // Clear and setup SVG
+    const svg = d3.select(svgRef.current);
+    svg.selectAll("*").remove();
+    svg.attr("width", W).attr("height", H);
+
+    // Zoomable group
+    const g = svg.append("g");
+    svg.call(
+      d3.zoom<SVGSVGElement, unknown>()
+        .scaleExtent([0.3, 3])
+        .on("zoom", (e) => g.attr("transform", e.transform.toString()))
+    );
+
+    // Links
+    const link = g
+      .append("g")
+      .selectAll<SVGLineElement, (typeof links)[0]>("line")
+      .data(links)
+      .join("line")
+      .attr("stroke", "#e5e7eb")
+      .attr("stroke-width", 1.5)
+      .attr("stroke-opacity", 0.8);
+
+    // Node groups with drag + click
+    const node = g
+      .append("g")
+      .selectAll<SVGGElement, NodeDatum>("g")
+      .data(nodes)
+      .join("g")
+      .style("cursor", (d) => (d.href ? "pointer" : "default"))
+      .on("click", (_e, d) => { if (d.href) router.push(d.href); });
+
+    // Drag behaviour
+    node.call(
+      d3.drag<SVGGElement, NodeDatum>()
+        .on("start", (e, d) => {
+          if (!e.active) sim.alphaTarget(0.3).restart();
+          d.fx = d.x; d.fy = d.y;
+        })
+        .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
+        .on("end", (e, d) => {
+          if (!e.active) sim.alphaTarget(0);
+          // Keep club fixed; release all others after drag
+          if (d.type !== "club") { d.fx = null; d.fy = null; }
+        })
+    );
+
+    // Circles
+    node
+      .append("circle")
+      .attr("r", (d) => NODE_R[d.type] ?? 10)
+      .attr("fill", (d) => NODE_COLOR[d.type] ?? "#888")
+      .attr("stroke", "white")
+      .attr("stroke-width", 1.5)
+      .attr("opacity", 0.88);
+
+    // Labels (pointer-events none to not block drag)
+    node
+      .append("text")
+      .text((d) => (d.label.length > 16 ? d.label.slice(0, 14) + "…" : d.label))
+      .attr("font-size", 9)
+      .attr("font-family", "'Barlow', sans-serif")
+      .attr("fill", "#374151")
+      .attr("text-anchor", "middle")
+      .attr("dy", (d) => (NODE_R[d.type] ?? 10) + 11)
+      .style("pointer-events", "none");
+
+    // Force simulation
+    const sim = d3.forceSimulation<NodeDatum>(nodes)
+      .force(
+        "link",
+        d3.forceLink<NodeDatum, (typeof links)[0]>(links)
+          .id((d) => d.id)
+          .distance(130)
+      )
+      .force("charge", d3.forceManyBody().strength(-220))
+      .force("collision", d3.forceCollide<NodeDatum>().radius((d) => (NODE_R[d.type] ?? 10) + 8))
+      .force("center", d3.forceCenter(cx, cy).strength(0.05));
+
+    sim.on("tick", () => {
+      link
+        .attr("x1", (d) => (d.source as NodeDatum).x ?? 0)
+        .attr("y1", (d) => (d.source as NodeDatum).y ?? 0)
+        .attr("x2", (d) => (d.target as NodeDatum).x ?? 0)
+        .attr("y2", (d) => (d.target as NodeDatum).y ?? 0);
+      node.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
+    });
+
+    return () => { sim.stop(); };
+  }, [clubNome, giocatori, procuratori, dsItems, router]);
+
+  return (
+    <div ref={containerRef} className="w-full">
+      <svg ref={svgRef} className="w-full" style={{ height: 420 }} />
+      <div className="flex flex-wrap gap-5 justify-center text-xs text-gray-500 mt-2">
+        {[
+          { color: NODE_COLOR.club, label: "Club" },
+          { color: NODE_COLOR.giocatore, label: "Giocatori" },
+          { color: NODE_COLOR.procuratore, label: "Procuratori" },
+          { color: NODE_COLOR.ds, label: "DS" },
+        ].map(({ color, label }) => (
+          <span key={label} className="flex items-center gap-1.5">
+            <span
+              className="w-2.5 h-2.5 rounded-full inline-block"
+              style={{ backgroundColor: color }}
+            />
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ───────────────────────────────────────────────────────────────
 export default function ClubProfilePage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<Record<string, unknown> | null>(null);
@@ -138,16 +318,21 @@ export default function ClubProfilePage() {
     ).values()
   );
 
+  // Procuratori con operazioni e giocatori distinti
+  const procuratoriLinks: PillItem[] = topProcuratori.map((p) => {
+    const ops = Number(p.operazioni ?? 0);
+    const gd = Number(p.giocatori_distinti ?? 0);
+    return {
+      id: p.id,
+      nome: String(p.nome ?? ""),
+      sub: gd > 0 ? `${ops} op. (${gd} giocatori)` : `${ops} op.`,
+    };
+  });
+
   const dsLinks: PillItem[] = topDS.map((ds) => ({
     id: ds.id,
     nome: String(ds.nome ?? ""),
     sub: `${String(ds.operazioni)} op.`,
-  }));
-
-  const procuratoriLinks: PillItem[] = topProcuratori.map((p) => ({
-    id: p.id,
-    nome: String(p.nome ?? ""),
-    sub: `${String(p.operazioni)} op.`,
   }));
 
   const hasCollegamenti =
@@ -155,6 +340,11 @@ export default function ClubProfilePage() {
     giocVendite.length > 0 ||
     dsLinks.length > 0 ||
     procuratoriLinks.length > 0;
+
+  // Dati per il grafo
+  const graphGiocatori: PillItem[] = Array.from(
+    new Map([...giocAcquisti, ...giocVendite].map((g) => [g.id, g])).values()
+  );
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-10">
@@ -203,25 +393,11 @@ export default function ClubProfilePage() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      {/* Stats — solo conteggi operazioni, nessun valore monetario */}
+      <div className="grid grid-cols-2 gap-4 mb-8">
         {[
           { label: "Acquisti", value: String(club.acquisti ?? 0) },
           { label: "Vendite", value: String(club.vendite ?? 0) },
-          {
-            label: "Spesa",
-            value:
-              Number(club.spesa_mln) > 0
-                ? `${Number(club.spesa_mln).toFixed(1)} mln €`
-                : "—",
-          },
-          {
-            label: "Incasso",
-            value:
-              Number(club.incasso_mln) > 0
-                ? `${Number(club.incasso_mln).toFixed(1)} mln €`
-                : "—",
-          },
         ].map((s) => (
           <div key={s.label} className="border border-gray-200 p-4">
             <div
@@ -309,6 +485,29 @@ export default function ClubProfilePage() {
         </div>
       )}
 
+      {/* ── GRAFO RELAZIONI ─────────────────────────────────────────────────────── */}
+      {(graphGiocatori.length > 0 || topProcuratori.length > 0 || topDS.length > 0) && (
+        <div className="mb-8">
+          <h2
+            className="text-xl font-black uppercase tracking-tight mb-4"
+            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          >
+            Grafo relazioni
+          </h2>
+          <div className="border border-gray-200 bg-gray-50 p-4">
+            <p className="text-xs text-gray-400 mb-3">
+              Trascina i nodi per riposizionarli · Scroll per zoom · Clicca per aprire il profilo
+            </p>
+            <ClubGraph
+              clubNome={nomeClub}
+              giocatori={graphGiocatori}
+              procuratori={topProcuratori}
+              dsItems={topDS}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-3 gap-8">
         {/* Acquisti recenti */}
         <div className="lg:col-span-2">
@@ -319,13 +518,12 @@ export default function ClubProfilePage() {
             Acquisti recenti
           </h2>
           <div className="border border-gray-200 overflow-x-auto">
-            <table className="data-table w-full min-w-[500px]">
+            <table className="data-table w-full min-w-[400px]">
               <thead>
                 <tr>
                   <th>Giocatore</th>
                   <th>Da</th>
                   <th>Tipo</th>
-                  <th>Fee</th>
                   <th>Stagione</th>
                 </tr>
               </thead>
@@ -358,13 +556,12 @@ export default function ClubProfilePage() {
                         {String(t.tipo ?? "—")}
                       </span>
                     </td>
-                    <td className="font-mono text-xs">{formatFee(t.fee)}</td>
                     <td className="text-xs text-gray-500">{String(t.stagione ?? "—")}</td>
                   </tr>
                 ))}
                 {acquisti.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="text-center py-8 text-gray-400">
+                    <td colSpan={4} className="text-center py-8 text-gray-400">
                       Nessun acquisto registrato
                     </td>
                   </tr>
@@ -397,12 +594,19 @@ export default function ClubProfilePage() {
                     >
                       {i + 1}
                     </span>
-                    <Link
-                      href={`/procuratori/${p.id}`}
-                      className="text-sm font-medium hover:text-primary"
-                    >
-                      {String(p.nome)}
-                    </Link>
+                    <div>
+                      <Link
+                        href={`/procuratori/${p.id}`}
+                        className="text-sm font-medium hover:text-primary"
+                      >
+                        {String(p.nome)}
+                      </Link>
+                      {Number(p.giocatori_distinti) > 0 && (
+                        <div className="text-xs text-gray-400">
+                          {String(p.giocatori_distinti)} giocatori distinti
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <span
                     className="text-sm font-black text-primary"

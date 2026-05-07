@@ -45,7 +45,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     // Top procuratori
     const topProcuratori = await query(
       `SELECT pr.id, pr.nome || ' ' || COALESCE(pr.cognome,'') as nome,
-              COUNT(t.id) as operazioni
+              COUNT(t.id) as operazioni,
+              COUNT(DISTINCT t.giocatore_id) as giocatori_distinti
        FROM trasferimenti_ufficiali t
        JOIN procuratori pr ON t.procuratore_id = pr.id
        WHERE t.club_arrivo_id = ? OR t.club_partenza_id = ?

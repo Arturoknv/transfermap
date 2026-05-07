@@ -21,14 +21,6 @@ const SCORE_BAND = (v: number) =>
     ? { cls: "bg-yellow-100 text-yellow-800 border-yellow-200", label: "Attenzione" }
     : { cls: "bg-green-100 text-green-800 border-green-200", label: "Normale" };
 
-function formatFee(fee: unknown): string {
-  const n = Number(fee);
-  if (!fee || fee === "None" || isNaN(n) || n <= 0) return "—";
-  return n >= 1_000_000
-    ? `${(n / 1_000_000).toFixed(1).replace(".", ",")} mln €`
-    : `${Math.round(n / 1_000)} K €`;
-}
-
 type PillItem = { id: unknown; nome: string; sub?: string };
 
 function PillGroup({
@@ -320,18 +312,11 @@ export default function ProcuratoreProfilePage() {
       </div>
 
       {/* Stats strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-3 gap-4 mb-8">
         {[
           { label: "Trasferimenti", value: String(agent.totale_trasferimenti ?? 0) },
           { label: "Giocatori assistiti", value: String(agent.giocatori_assistiti ?? 0) },
           { label: "Club coinvolti", value: String(agent.club_coinvolti ?? 0) },
-          {
-            label: "Volume",
-            value:
-              Number(agent.volume_mln) > 0
-                ? `${Number(agent.volume_mln).toFixed(1)} mln €`
-                : "N/D",
-          },
         ].map((s) => (
           <div key={s.label} className="border border-gray-200 p-4">
             <div
@@ -430,7 +415,6 @@ export default function ProcuratoreProfilePage() {
                   <th>Giocatore</th>
                   <th>Partenza → Arrivo</th>
                   <th>Tipo</th>
-                  <th>Fee</th>
                   <th>Stagione</th>
                 </tr>
               </thead>
@@ -466,13 +450,12 @@ export default function ProcuratoreProfilePage() {
                         {String(t.tipo ?? "—")}
                       </span>
                     </td>
-                    <td className="font-mono text-xs font-semibold">{formatFee(t.fee)}</td>
                     <td className="text-xs text-gray-500">{String(t.stagione ?? "—")}</td>
                   </tr>
                 ))}
                 {trasferimenti.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="text-center py-8 text-gray-400">
+                    <td colSpan={4} className="text-center py-8 text-gray-400">
                       Nessun trasferimento registrato
                     </td>
                   </tr>

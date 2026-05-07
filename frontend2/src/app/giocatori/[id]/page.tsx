@@ -21,14 +21,6 @@ const SCORE_BAND = (v: number) =>
     ? { cls: "bg-yellow-100 text-yellow-800 border-yellow-200", label: "Attenzione" }
     : { cls: "bg-green-100 text-green-800 border-green-200", label: "Normale" };
 
-function formatFee(fee: unknown): string {
-  const n = Number(fee);
-  if (!fee || fee === "None" || isNaN(n) || n <= 0) return "—";
-  return n >= 1_000_000
-    ? `${(n / 1_000_000).toFixed(1).replace(".", ",")} mln €`
-    : `${Math.round(n / 1_000)} K €`;
-}
-
 type PillItem = { id: unknown; nome: string; sub?: string };
 
 function PillGroup({
@@ -217,11 +209,6 @@ export default function GiocatoreProfilePage() {
               {player.nazionalita && (
                 <span className="text-sm text-gray-500">{String(player.nazionalita)}</span>
               )}
-              {player.valore_mercato && Number(player.valore_mercato) > 0 && (
-                <span className="text-sm font-bold text-primary">
-                  {formatFee(player.valore_mercato)}
-                </span>
-              )}
             </div>
           </div>
           <button
@@ -287,14 +274,10 @@ export default function GiocatoreProfilePage() {
       </div>
 
       {/* Stats strip */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-2 gap-4 mb-8">
         {[
           { label: "Trasferimenti", value: String(player.totale_trasferimenti ?? 0) },
           { label: "Stagioni", value: String(stagioni.length) },
-          {
-            label: "Valore mercato",
-            value: Number(player.valore_mercato) > 0 ? formatFee(player.valore_mercato) : "N/D",
-          },
         ].map((s) => (
           <div key={s.label} className="border border-gray-200 p-4">
             <div
@@ -426,9 +409,6 @@ export default function GiocatoreProfilePage() {
                         <span className="font-semibold">
                           {t.club_arrivo ? String(t.club_arrivo) : "—"}
                         </span>
-                      </div>
-                      <div className="text-xs font-mono font-semibold text-gray-700 shrink-0">
-                        {formatFee(t.fee)}
                       </div>
                       {t.procuratore_nome && String(t.procuratore_nome).trim() && (
                         <div className="text-xs text-gray-400 shrink-0 w-full sm:w-auto">

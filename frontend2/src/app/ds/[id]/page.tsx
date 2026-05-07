@@ -21,14 +21,6 @@ const SCORE_BAND = (v: number) =>
     ? { cls: "bg-yellow-100 text-yellow-800 border-yellow-200", label: "Attenzione" }
     : { cls: "bg-green-100 text-green-800 border-green-200", label: "Normale" };
 
-function formatFee(fee: unknown): string {
-  const n = Number(fee);
-  if (!fee || fee === "None" || isNaN(n) || n <= 0) return "—";
-  return n >= 1_000_000
-    ? `${(n / 1_000_000).toFixed(1).replace(".", ",")} mln €`
-    : `${Math.round(n / 1_000)} K €`;
-}
-
 type PillItem = { id: unknown; nome: string; sub?: string };
 
 function PillGroup({
@@ -382,9 +374,6 @@ export default function DSProfilePage() {
                         <span>{t.club_partenza ? String(t.club_partenza) : "—"}</span>
                         <span className="mx-1 text-primary font-bold">→</span>
                         <span>{t.club_arrivo ? String(t.club_arrivo) : "—"}</span>
-                      </div>
-                      <div className="text-xs font-mono font-semibold text-gray-700 shrink-0">
-                        {formatFee(t.fee)}
                       </div>
                     </div>
                   ))}
