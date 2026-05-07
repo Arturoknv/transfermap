@@ -141,6 +141,7 @@ export default function GraphClient() {
   );
   const [search, setSearch] = useState("");
   const simulationRef = useRef<d3.Simulation<GraphNode, GraphEdge> | null>(null);
+  const resetFocusRef = useRef<() => void>(() => {});
 
   const fetchGraph = useCallback(async () => {
     setLoading(true);
@@ -181,10 +182,12 @@ export default function GraphClient() {
     const width = container.clientWidth;
     const height = container.clientHeight;
 
+    // Reset any previous focus state when graph rebuilds
+    setSelected(null);
+    setSelectedEdge(null);
+
     let nodes = graphData.nodes.filter((n) => {
       if (!activeTypes.has(n.tipo)) return false;
-      const dispLabel = n.tipo === "club" ? normalizeClubName(n.label) : n.label;
-      if (search && !dispLabel.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
 
@@ -407,14 +410,54 @@ export default function GraphClient() {
           });
       });
 
+    // Shared reset function — resets D3 opacity; call setSelected/setSelectedEdge separately
+    resetFocusRef.current = () => {
+      node.attr("opacity", 1);
+      node.select("circle").attr("stroke-width", 1.5).attr("stroke", "white");
+      link.attr("stroke", (d) => edgeColor(d)).attr("stroke-opacity", 0.4).attr("opacity", 1);
+    };
+
     // Click background → deselect
     svg.on("click", () => {
       setSelected(null);
       setSelectedEdge(null);
-      node.attr("opacity", 1);
-      node.select("circle").attr("stroke-width", 1.5).attr("stroke", "white");
-      link.attr("stroke", (d) => edgeColor(d)).attr("stroke-opacity", 0.4).attr("opacity", 1);
+      resetFocusRef.current();
     });
+
+    // Auto-focus when search term is set — same behaviour as clicking the node
+    if (search) {
+      const searchLower = search.toLowerCase();
+      const found = nodes.find((n) => n.label.toLowerCase().includes(searchLower));
+      if (found) {
+        const connectedIds = new Set<string>();
+        const connEdges = new Map<string, GraphEdge>();
+        edges.forEach((e) => {
+          const s = typeof e.source === "object" ? (e.source as GraphNode).id : e.source;
+          const t = typeof e.target === "object" ? (e.target as GraphNode).id : e.target;
+          if (s === found.id) { connectedIds.add(t); connEdges.set(t, e); }
+          if (t === found.id) { connectedIds.add(s); connEdges.set(s, e); }
+        });
+        const connections = nodes
+          .filter((n) => connectedIds.has(n.id))
+          .map((n) => ({ node: n, edge: connEdges.get(n.id)! }));
+        setSelected({ node: found, connections });
+        node.attr("opacity", (n) => n.id === found.id || connectedIds.has(n.id) ? 1 : 0.05);
+        node.select("circle")
+          .attr("stroke-width", (n) => n.id === found.id ? 3 : 1.5)
+          .attr("stroke", (n) => n.id === found.id ? "#1a3de8" : "white");
+        link
+          .attr("stroke", (e) => {
+            const s = typeof e.source === "object" ? (e.source as GraphNode).id : e.source;
+            const t = typeof e.target === "object" ? (e.target as GraphNode).id : e.target;
+            return s === found.id || t === found.id ? edgeColor(e) : "#d1d5db";
+          })
+          .attr("stroke-opacity", (e) => {
+            const s = typeof e.source === "object" ? (e.source as GraphNode).id : e.source;
+            const t = typeof e.target === "object" ? (e.target as GraphNode).id : e.target;
+            return s === found.id || t === found.id ? 0.9 : 0.04;
+          });
+      }
+    }
 
     // Tick
     simulation.on("tick", () => {
@@ -554,6 +597,20 @@ export default function GraphClient() {
 
       {/* Graph canvas */}
       <div ref={containerRef} className="flex-1 relative bg-gray-50 overflow-hidden">
+        {(selected || selectedEdge) && (
+          <button
+            onClick={() => {
+              setSelected(null);
+              setSelectedEdge(null);
+              setSearch("");
+              resetFocusRef.current();
+            }}
+            className="absolute top-3 left-3 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 text-xs font-bold uppercase tracking-wide text-gray-600 hover:border-primary hover:text-primary shadow-sm transition-colors"
+            style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          >
+            ← Torna al grafo
+          </button>
+        )}
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
             <div className="text-center">
