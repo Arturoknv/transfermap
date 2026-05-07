@@ -14,11 +14,11 @@ const TIPO_COLORS: Record<string, string> = {
   svincolo: "bg-gray-100 text-gray-700",
 };
 
-// Score thresholds: > 7 red, 4-7 yellow, < 4 green
+// Score thresholds: >= 60 red/Anomalo, >= 40 yellow/Attenzione, < 40 green/Normale
 const SCORE_BAND = (v: number) =>
-  v > 7
+  v >= 60
     ? { cls: "bg-red-100 text-red-800 border-red-200", label: "Anomalo" }
-    : v >= 4
+    : v >= 40
     ? { cls: "bg-yellow-100 text-yellow-800 border-yellow-200", label: "Attenzione" }
     : { cls: "bg-green-100 text-green-800 border-green-200", label: "Normale" };
 
@@ -81,11 +81,13 @@ function ClubGraph({
   giocatori,
   procuratori,
   dsItems,
+  acquisti,
 }: {
   clubNome: string;
   giocatori: PillItem[];
   procuratori: Array<Record<string, unknown>>;
   dsItems: Array<Record<string, unknown>>;
+  acquisti: Array<Record<string, unknown>>;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -130,7 +132,27 @@ function ClubGraph({
       n.y = cy + 150 * Math.sin(angle);
     });
 
-    const links = peripherals.map((n) => ({ source: "__club__", target: n.id }));
+    type EdgeDatum = { source: string; target: string; kind: "hub" | "proc-gioc" };
+
+    const hubEdges: EdgeDatum[] = peripherals.map((n) => ({
+      source: "__club__", target: n.id, kind: "hub",
+    }));
+
+    // Proc↔Giocatore edges derived from acquisti
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    const procGiocEdges: EdgeDatum[] = Array.from(
+      new Map(
+        acquisti
+          .filter((a) => a.procuratore_id && a.giocatore_id)
+          .filter((a) => nodeIds.has(`p_${a.procuratore_id}`) && nodeIds.has(`g_${a.giocatore_id}`))
+          .map((a) => {
+            const key = `p_${a.procuratore_id}-g_${a.giocatore_id}`;
+            return [key, { source: `p_${a.procuratore_id}`, target: `g_${a.giocatore_id}`, kind: "proc-gioc" as const }];
+          })
+      ).values()
+    );
+
+    const links: EdgeDatum[] = [...hubEdges, ...procGiocEdges];
 
     // Clear and setup SVG
     const svg = d3.select(svgRef.current);
@@ -145,15 +167,16 @@ function ClubGraph({
         .on("zoom", (e) => g.attr("transform", e.transform.toString()))
     );
 
-    // Links
+    // Links — styled by kind
     const link = g
       .append("g")
-      .selectAll<SVGLineElement, (typeof links)[0]>("line")
+      .selectAll<SVGLineElement, EdgeDatum>("line")
       .data(links)
       .join("line")
-      .attr("stroke", "#e5e7eb")
-      .attr("stroke-width", 1.5)
-      .attr("stroke-opacity", 0.8);
+      .attr("stroke", (d) => d.kind === "proc-gioc" ? "#e86b1a" : "#e5e7eb")
+      .attr("stroke-width", (d) => d.kind === "proc-gioc" ? 1 : 1.5)
+      .attr("stroke-opacity", (d) => d.kind === "proc-gioc" ? 0.5 : 0.8)
+      .attr("stroke-dasharray", (d) => d.kind === "proc-gioc" ? "4,3" : "none");
 
     // Node groups with drag + click
     const node = g
@@ -203,9 +226,9 @@ function ClubGraph({
     const sim = d3.forceSimulation<NodeDatum>(nodes)
       .force(
         "link",
-        d3.forceLink<NodeDatum, (typeof links)[0]>(links)
+        d3.forceLink<NodeDatum, EdgeDatum>(links)
           .id((d) => d.id)
-          .distance(130)
+          .distance((d) => d.kind === "proc-gioc" ? 90 : 130)
       )
       .force("charge", d3.forceManyBody().strength(-220))
       .force("collision", d3.forceCollide<NodeDatum>().radius((d) => (NODE_R[d.type] ?? 10) + 8))
@@ -221,7 +244,7 @@ function ClubGraph({
     });
 
     return () => { sim.stop(); };
-  }, [clubNome, giocatori, procuratori, dsItems, router]);
+  }, [clubNome, giocatori, procuratori, dsItems, acquisti, router]);
 
   return (
     <div ref={containerRef} className="w-full">
@@ -503,6 +526,7 @@ export default function ClubProfilePage() {
               giocatori={graphGiocatori}
               procuratori={topProcuratori}
               dsItems={topDS}
+              acquisti={acquisti}
             />
           </div>
         </div>

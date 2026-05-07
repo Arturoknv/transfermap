@@ -13,11 +13,11 @@ const TIPO_COLORS: Record<string, string> = {
   svincolo: "bg-gray-100 text-gray-700",
 };
 
-// Score thresholds: > 7 red, 4-7 yellow, < 4 green
+// Score thresholds: >= 60 red/Anomalo, >= 40 yellow/Attenzione, < 40 green/Normale
 const SCORE_BAND = (v: number) =>
-  v > 7
+  v >= 60
     ? { cls: "bg-red-100 text-red-800 border-red-200", label: "Anomalo" }
-    : v >= 4
+    : v >= 40
     ? { cls: "bg-yellow-100 text-yellow-800 border-yellow-200", label: "Attenzione" }
     : { cls: "bg-green-100 text-green-800 border-green-200", label: "Normale" };
 
@@ -170,9 +170,12 @@ export default function GiocatoreProfilePage() {
     ).values()
   );
 
+  const allClubs: PillItem[] = Array.from(
+    new Map([...clubsArrivo, ...clubsPartenza].map((c) => [c.id, c])).values()
+  );
+
   const hasCollegamenti =
-    clubsArrivo.length > 0 ||
-    clubsPartenza.length > 0 ||
+    allClubs.length > 0 ||
     procuratoriLinks.length > 0 ||
     dsLinks.length > 0;
 
@@ -302,13 +305,8 @@ export default function GiocatoreProfilePage() {
           </h2>
           <div className="border border-gray-200 p-5 space-y-5">
             <PillGroup
-              title="Club di arrivo"
-              items={clubsArrivo}
-              href={(id) => `/clubs/${id}`}
-            />
-            <PillGroup
-              title="Club di partenza"
-              items={clubsPartenza}
+              title="Club"
+              items={allClubs}
               href={(id) => `/clubs/${id}`}
             />
             <PillGroup

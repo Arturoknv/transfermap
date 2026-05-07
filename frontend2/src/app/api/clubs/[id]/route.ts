@@ -31,6 +31,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
               g.id as giocatore_id,
               g.nome || ' ' || COALESCE(g.cognome,'') as giocatore_nome, g.ruolo,
               cp.nome as club_partenza, cp.campionato as camp_partenza,
+              t.procuratore_id as procuratore_id,
               pr.nome || ' ' || COALESCE(pr.cognome,'') as procuratore_nome
        FROM trasferimenti_ufficiali t
        LEFT JOIN giocatori g ON t.giocatore_id = g.id

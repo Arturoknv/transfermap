@@ -65,6 +65,13 @@ const TIPO_COLORS: Record<string, string> = {
   svincolo: "bg-gray-100 text-gray-700",
 };
 
+const ENTITY_BADGE: Record<string, { label: string; cls: string }> = {
+  club:        { label: "Club",        cls: "bg-red-100 text-red-700" },
+  procuratore: { label: "Procuratore", cls: "bg-orange-100 text-orange-700" },
+  ds:          { label: "DS",          cls: "bg-green-100 text-green-700" },
+  giocatore:   { label: "Giocatore",   cls: "bg-blue-100 text-blue-700" },
+};
+
 /** URL della pagina profilo in base al tipo di entità. */
 function entityHref(tipo: string, id: string): string {
   if (tipo === "procuratore") return `/procuratori/${id}`;
@@ -522,6 +529,11 @@ export default function AlertPage() {
                       </Link>
                     ) : (
                       <span className="font-semibold text-gray-700">{row.entita_id}</span>
+                    )}
+                    {ENTITY_BADGE[row.entita_tipo] && (
+                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 ${ENTITY_BADGE[row.entita_tipo].cls}`}>
+                        {ENTITY_BADGE[row.entita_tipo].label}
+                      </span>
                     )}
                     {row.entita_2_nome && (
                       <>
