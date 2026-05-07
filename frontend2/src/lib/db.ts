@@ -26,16 +26,22 @@ let client: LibSQLClient | null = null;
  */
 export function getDb(): LibSQLClient {
   if (!client) {
-    const raw = process.env.TURSO_DATABASE_URL;
+    // Su CF Pages edge runtime process.env non è disponibile: le variabili
+    // d'ambiente sono esposte come globali sull'oggetto globalThis.
+    // Il fallback su process.env copre lo sviluppo locale con Node.js.
+    const raw =
+      (globalThis as Record<string, unknown>)["TURSO_DATABASE_URL"] as string | undefined
+      ?? process.env.TURSO_DATABASE_URL;
     if (!raw) throw new Error("TURSO_DATABASE_URL non è definita");
 
     // libsql:// usa WebSocket, non disponibile su edge → converto in https://
     const url = raw.startsWith("libsql://") ? raw.replace("libsql://", "https://") : raw;
 
-    client = createClient({
-      url,
-      authToken: process.env.TURSO_AUTH_TOKEN,
-    });
+    const authToken =
+      (globalThis as Record<string, unknown>)["TURSO_AUTH_TOKEN"] as string | undefined
+      ?? process.env.TURSO_AUTH_TOKEN;
+
+    client = createClient({ url, authToken });
   }
   return client;
 }
