@@ -5,3 +5,4 @@ pages_build_output_dir = ".vercel/output/static"
 
 [vars]
 NEXT_PUBLIC_APP_URL = "https://transfermap.it"
+TURSO_DATABASE_URL = "https://transfermap-db-arturoknv.aws-eu-west-1.turso.io"
