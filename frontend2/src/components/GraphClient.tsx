@@ -80,6 +80,49 @@ function formatFee(fee: unknown): string {
     : `${Math.round(n / 1_000)} K €`;
 }
 
+/** Normalizza nomi club comuni per evitare duplicati visivi nel grafo. */
+function normalizeClubName(name: string): string {
+  const exact: Record<string, string> = {
+    "AC Milan": "Milan", "A.C. Milan": "Milan",
+    "Juventus FC": "Juventus", "FC Juventus": "Juventus",
+    "Inter Milan": "Inter", "FC Internazionale": "Inter", "FC Internazionale Milano": "Inter",
+    "AS Roma": "Roma", "A.S. Roma": "Roma",
+    "SS Lazio": "Lazio", "S.S. Lazio": "Lazio",
+    "SSC Napoli": "Napoli", "S.S.C. Napoli": "Napoli",
+    "ACF Fiorentina": "Fiorentina", "AC Fiorentina": "Fiorentina",
+    "Atalanta BC": "Atalanta",
+    "Torino FC": "Torino",
+    "Bologna FC": "Bologna", "Bologna FC 1909": "Bologna",
+    "Genoa CFC": "Genoa",
+    "Udinese Calcio": "Udinese",
+    "Cagliari Calcio": "Cagliari",
+    "US Lecce": "Lecce",
+    "US Cremonese": "Cremonese",
+    "Hellas Verona FC": "Hellas Verona",
+    "FC Empoli": "Empoli", "Empoli FC": "Empoli",
+    "US Salernitana": "Salernitana",
+    "Frosinone Calcio": "Frosinone",
+    "Venezia FC": "Venezia",
+    "US Sassuolo": "Sassuolo", "Sassuolo Calcio": "Sassuolo",
+    "Spezia Calcio": "Spezia",
+    "Brescia Calcio": "Brescia",
+    "Pisa SC": "Pisa",
+    "Cosenza Calcio": "Cosenza",
+    "US Palermo": "Palermo",
+  };
+  return exact[name] ?? name;
+}
+
+/** Colore arco in base ai tipi dei nodi collegati. */
+function edgeColor(edge: GraphEdge): string {
+  const s = typeof edge.source === "object" ? (edge.source as GraphNode).tipo : "";
+  const t = typeof edge.target === "object" ? (edge.target as GraphNode).tipo : "";
+  const types = new Set([s, t]);
+  if (types.has("procuratore") && types.has("giocatore")) return "#e86b1a"; // arancio
+  if (types.has("ds") && types.has("giocatore")) return "#16a34a";           // verde
+  return "#9ca3af";                                                           // grigio
+}
+
 const SEASONS = ["2024-25", "2023-24", "2022-23"];
 const CAMPIONATI = ["Serie A", "Serie B", "Serie C"];
 
@@ -140,7 +183,8 @@ export default function GraphClient() {
 
     let nodes = graphData.nodes.filter((n) => {
       if (!activeTypes.has(n.tipo)) return false;
-      if (search && !n.label.toLowerCase().includes(search.toLowerCase())) return false;
+      const dispLabel = n.tipo === "club" ? normalizeClubName(n.label) : n.label;
+      if (search && !dispLabel.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
     const nodeIds = new Set(nodes.map((n) => n.id));
@@ -150,7 +194,11 @@ export default function GraphClient() {
       return nodeIds.has(s) && nodeIds.has(t);
     });
 
-    nodes = nodes.map((n) => ({ ...n }));
+    // Normalize club names for display (preserves id for matching)
+    nodes = nodes.map((n) => ({
+      ...n,
+      label: n.tipo === "club" ? normalizeClubName(n.label) : n.label,
+    }));
 
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
@@ -182,14 +230,14 @@ export default function GraphClient() {
     // ── EDGES ──────────────────────────────────────────────────────────
     const linkGroup = g.append("g").attr("class", "links");
 
-    // Visible line
+    // Visible line — colored by edge type
     const link = linkGroup.selectAll<SVGLineElement, GraphEdge>("line.vis")
       .data(edges)
       .join("line")
       .attr("class", "vis")
-      .attr("stroke", "#e5e7eb")
+      .attr("stroke", (d) => edgeColor(d))
       .attr("stroke-width", (d) => Math.min(4, 0.5 + (d.weight ?? 1) * 0.3))
-      .attr("stroke-opacity", 0.6)
+      .attr("stroke-opacity", 0.4)
       .attr("pointer-events", "none");
 
     // Invisible wider hitbox for clicks (12px wide)
@@ -212,16 +260,17 @@ export default function GraphClient() {
           const et = typeof e.target === "object" ? (e.target as GraphNode).id : e.target;
           const ds = typeof d.source === "object" ? (d.source as GraphNode).id : d.source;
           const dt = typeof d.target === "object" ? (d.target as GraphNode).id : d.target;
-          return (es === ds && et === dt) || (es === dt && et === ds) ? "#1a3de8" : "#e5e7eb";
+          const isSel = (es === ds && et === dt) || (es === dt && et === ds);
+          return isSel ? "#1a3de8" : edgeColor(e);
         }).attr("stroke-opacity", (e) => {
           const es = typeof e.source === "object" ? (e.source as GraphNode).id : e.source;
           const et = typeof e.target === "object" ? (e.target as GraphNode).id : e.target;
           const ds = typeof d.source === "object" ? (d.source as GraphNode).id : d.source;
           const dt = typeof d.target === "object" ? (d.target as GraphNode).id : d.target;
-          return (es === ds && et === dt) || (es === dt && et === ds) ? 1 : 0.15;
+          return (es === ds && et === dt) || (es === dt && et === ds) ? 0.9 : 0.05;
         });
+        node.attr("opacity", (n) => n.id === srcNode.id || n.id === tgtNode.id ? 1 : 0.15);
         node.select("circle")
-          .attr("opacity", (n) => n.id === srcNode.id || n.id === tgtNode.id ? 1 : 0.2)
           .attr("stroke", (n) => n.id === srcNode.id || n.id === tgtNode.id ? "#1a3de8" : "white")
           .attr("stroke-width", (n) => n.id === srcNode.id || n.id === tgtNode.id ? 3 : 1.5);
 
@@ -317,23 +366,31 @@ export default function GraphClient() {
           .map((n) => ({ node: n, edge: connEdges.get(n.id)! }));
         setSelected({ node: d, connections });
 
+        // Dim entire node group (circle + label) for non-neighbors
+        node.attr("opacity", (n) => n.id === d.id || connectedIds.has(n.id) ? 1 : 0.15);
         node.select("circle")
-          .attr("opacity", (n) => n.id === d.id || connectedIds.has(n.id) ? 1 : 0.2)
           .attr("stroke-width", (n) => n.id === d.id ? 3 : 1.5)
           .attr("stroke", (n) => n.id === d.id ? "#1a3de8" : "white");
-        link.attr("stroke", "#e5e7eb").attr("opacity", (e) => {
-          const s = typeof e.source === "object" ? (e.source as GraphNode).id : e.source;
-          const t = typeof e.target === "object" ? (e.target as GraphNode).id : e.target;
-          return s === d.id || t === d.id ? 0.9 : 0.05;
-        });
+        link
+          .attr("stroke", (e) => {
+            const s = typeof e.source === "object" ? (e.source as GraphNode).id : e.source;
+            const t = typeof e.target === "object" ? (e.target as GraphNode).id : e.target;
+            return s === d.id || t === d.id ? edgeColor(e) : "#d1d5db";
+          })
+          .attr("stroke-opacity", (e) => {
+            const s = typeof e.source === "object" ? (e.source as GraphNode).id : e.source;
+            const t = typeof e.target === "object" ? (e.target as GraphNode).id : e.target;
+            return s === d.id || t === d.id ? 0.9 : 0.04;
+          });
       });
 
     // Click background → deselect
     svg.on("click", () => {
       setSelected(null);
       setSelectedEdge(null);
-      node.select("circle").attr("opacity", 1).attr("stroke-width", 1.5).attr("stroke", "white");
-      link.attr("stroke", "#e5e7eb").attr("stroke-opacity", 0.6).attr("opacity", 1);
+      node.attr("opacity", 1);
+      node.select("circle").attr("stroke-width", 1.5).attr("stroke", "white");
+      link.attr("stroke", (d) => edgeColor(d)).attr("stroke-opacity", 0.4).attr("opacity", 1);
     });
 
     // Tick

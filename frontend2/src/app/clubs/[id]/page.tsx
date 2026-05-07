@@ -66,6 +66,8 @@ type NodeDatum = d3.SimulationNodeDatum & {
   label: string;
   type: "club" | "giocatore" | "procuratore" | "ds";
   href?: string;
+  ops?: number;
+  sub?: string;
 };
 
 const NODE_COLOR: Record<string, string> = {
@@ -109,18 +111,21 @@ function ClubGraph({
         label: String(g.nome).slice(0, 18),
         type: "giocatore" as const,
         href: `/giocatori/${g.id}`,
+        sub: g.sub ? String(g.sub) : undefined,
       })),
       ...procuratori.slice(0, 6).map((p) => ({
         id: `p_${p.id}`,
         label: String(p.nome ?? "").slice(0, 18),
         type: "procuratore" as const,
         href: `/procuratori/${p.id}`,
+        ops: Number(p.operazioni ?? 0),
       })),
       ...dsItems.slice(0, 4).map((d) => ({
         id: `d_${d.id}`,
         label: String(d.nome ?? "").slice(0, 18),
         type: "ds" as const,
         href: `/ds/${d.id}`,
+        ops: Number(d.operazioni ?? 0),
       })),
     ];
 
@@ -234,6 +239,45 @@ function ClubGraph({
       .force("collision", d3.forceCollide<NodeDatum>().radius((d) => (NODE_R[d.type] ?? 10) + 8))
       .force("center", d3.forceCenter(cx, cy).strength(0.05));
 
+    // ── Tooltip ──────────────────────────────────────────────────────────────
+    const NODE_TYPE_LABEL: Record<string, string> = {
+      club: "Club", giocatore: "Giocatore", procuratore: "Procuratore", ds: "Dir. Sportivo",
+    };
+    const tooltip = d3.select(containerRef.current!)
+      .append("div")
+      .style("position", "absolute")
+      .style("pointer-events", "none")
+      .style("background", "white")
+      .style("border", "1px solid #e5e7eb")
+      .style("padding", "6px 10px")
+      .style("font-size", "11px")
+      .style("box-shadow", "0 2px 8px rgba(0,0,0,0.1)")
+      .style("z-index", "10")
+      .style("opacity", "0")
+      .style("min-width", "110px");
+
+    node
+      .on("mouseover", (_event, d) => {
+        const parts: string[] = [
+          `<strong>${d.label}</strong>`,
+          `<span style="color:#9ca3af;font-size:10px">${NODE_TYPE_LABEL[d.type] ?? d.type}</span>`,
+        ];
+        if (d.ops != null && d.ops > 0)
+          parts.push(`<span style="color:#9ca3af;font-size:10px">${d.ops} op.</span>`);
+        if (d.sub)
+          parts.push(`<span style="color:#9ca3af;font-size:10px">${d.sub}</span>`);
+        if (d.href)
+          parts.push(`<span style="color:#e8211a;font-size:10px;margin-top:2px;display:block">Clicca per aprire →</span>`);
+        tooltip.style("opacity", "1").html(parts.join("<br/>"));
+      })
+      .on("mousemove", (event) => {
+        const rect = containerRef.current!.getBoundingClientRect();
+        tooltip
+          .style("left", `${event.clientX - rect.left + 14}px`)
+          .style("top", `${event.clientY - rect.top - 10}px`);
+      })
+      .on("mouseout", () => tooltip.style("opacity", "0"));
+
     sim.on("tick", () => {
       link
         .attr("x1", (d) => (d.source as NodeDatum).x ?? 0)
@@ -243,7 +287,7 @@ function ClubGraph({
       node.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
     });
 
-    return () => { sim.stop(); };
+    return () => { sim.stop(); tooltip.remove(); };
   }, [clubNome, giocatori, procuratori, dsItems, acquisti, router]);
 
   return (

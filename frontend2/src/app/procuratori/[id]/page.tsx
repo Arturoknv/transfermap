@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSegnalazioni } from "@/components/AppShell";
 
@@ -60,6 +60,8 @@ function PillGroup({
 }
 
 // ── Mini grafo relazioni ────────────────────────────────────────────────────
+type MiniNode = { label: string; weight: number; tipo: string; href?: string; x: number; y: number };
+
 function MiniGraph({
   agentLabel,
   topClub,
@@ -71,6 +73,9 @@ function MiniGraph({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(600);
+  const [hoveredNode, setHoveredNode] = useState<Omit<MiniNode, "x" | "y"> | null>(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const router = useRouter();
 
   useEffect(() => {
     if (containerRef.current) setWidth(containerRef.current.clientWidth);
@@ -89,16 +94,18 @@ function MiniGraph({
     label: String(c.club ?? ""),
     weight: Number(c.operazioni ?? 1),
     tipo: "club",
+    href: c.club_id ? `/clubs/${c.club_id}` : undefined,
   }));
   const players = giocatori.slice(0, 7).map((g) => ({
     label: String(g.nome ?? ""),
     weight: Number(g.operazioni ?? 1),
     tipo: "giocatore",
+    href: g.id ? `/giocatori/${g.id}` : undefined,
   }));
 
   const r = Math.min(width * 0.35, 170);
 
-  const nodePositions = (nodes: typeof clubs, startAngle: number, endAngle: number) =>
+  const nodePositions = (nodes: typeof clubs, startAngle: number, endAngle: number): MiniNode[] =>
     nodes.map((n, i) => {
       const a =
         nodes.length === 1
@@ -108,7 +115,7 @@ function MiniGraph({
     });
 
   const clubNodes = nodePositions(clubs, (-3 * Math.PI) / 4, (3 * Math.PI) / 4);
-  const playerPositions = players.map((n, i) => {
+  const playerPositions: MiniNode[] = players.map((n, i) => {
     const a =
       players.length === 1
         ? 0
@@ -116,11 +123,21 @@ function MiniGraph({
     return { ...n, x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
   });
 
-  const allNodes = [...clubNodes, ...playerPositions];
+  const allNodes: MiniNode[] = [...clubNodes, ...playerPositions];
 
   return (
-    <div ref={containerRef} className="w-full">
-      <svg viewBox={`0 0 ${width} ${H}`} width="100%" height={H}>
+    <div ref={containerRef} className="w-full relative">
+      <svg
+        viewBox={`0 0 ${width} ${H}`}
+        width="100%"
+        height={H}
+        onMouseMove={(e) => {
+          if (hoveredNode && containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            setTooltipPos({ x: e.clientX - rect.left + 14, y: e.clientY - rect.top - 10 });
+          }
+        }}
+      >
         {allNodes.map((n, i) => (
           <line
             key={`e-${i}`}
@@ -139,10 +156,22 @@ function MiniGraph({
           const lx = dx > 20 ? n.x + nodeR + 4 : dx < -20 ? n.x - nodeR - 4 : n.x;
           const ly = n.y + (n.y > cy + 10 ? nodeR + 13 : n.y < cy - 10 ? -nodeR - 5 : 4);
           return (
-            <g key={`n-${i}`}>
+            <g
+              key={`n-${i}`}
+              style={{ cursor: n.href ? "pointer" : "default" }}
+              onMouseEnter={(e) => {
+                if (containerRef.current) {
+                  const rect = containerRef.current.getBoundingClientRect();
+                  setTooltipPos({ x: e.clientX - rect.left + 14, y: e.clientY - rect.top - 10 });
+                }
+                setHoveredNode({ label: n.label, tipo: n.tipo, weight: n.weight, href: n.href });
+              }}
+              onMouseLeave={() => setHoveredNode(null)}
+              onClick={() => { if (n.href) router.push(n.href); }}
+            >
               <circle cx={n.x} cy={n.y} r={nodeR} fill={color} opacity={0.85} />
               <text x={lx} y={ly} textAnchor={anchor} fontSize={9}
-                fontFamily="'Barlow', sans-serif" fill="#374151">
+                fontFamily="'Barlow', sans-serif" fill="#374151" style={{ pointerEvents: "none" }}>
                 {lbl}
               </text>
             </g>
@@ -154,6 +183,37 @@ function MiniGraph({
           {agentLabel.split(" ").map((w) => w[0]).join("").slice(0, 3).toUpperCase()}
         </text>
       </svg>
+
+      {/* Node tooltip */}
+      {hoveredNode && (
+        <div
+          style={{
+            position: "absolute",
+            left: tooltipPos.x,
+            top: tooltipPos.y,
+            pointerEvents: "none",
+            background: "white",
+            border: "1px solid #e5e7eb",
+            padding: "6px 10px",
+            fontSize: 11,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+            zIndex: 10,
+            minWidth: 110,
+          }}
+        >
+          <div style={{ fontWeight: 700 }}>{hoveredNode.label}</div>
+          <div style={{ color: "#9ca3af", fontSize: 10 }}>
+            {hoveredNode.tipo === "club" ? "Club" : "Giocatore"}
+          </div>
+          {hoveredNode.weight > 1 && (
+            <div style={{ color: "#9ca3af", fontSize: 10 }}>{hoveredNode.weight} op.</div>
+          )}
+          {hoveredNode.href && (
+            <div style={{ color: "#e86b1a", fontSize: 10, marginTop: 2 }}>Clicca per aprire →</div>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center gap-5 justify-center mt-1 text-xs text-gray-500">
         <span className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-[#e8211a] inline-block" /> Club
@@ -170,10 +230,17 @@ function MiniGraph({
 }
 
 // ── Main page ───────────────────────────────────────────────────────────────
+type ClubPanel = {
+  nome: string;
+  club_id: unknown;
+  items: Array<Record<string, unknown>>;
+};
+
 export default function ProcuratoreProfilePage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [clubPanel, setClubPanel] = useState<ClubPanel | null>(null);
   const { openDrawer } = useSegnalazioni();
 
   useEffect(() => {
@@ -475,39 +542,47 @@ export default function ProcuratoreProfilePage() {
               Club con cui ha lavorato
             </h3>
             <div className="space-y-2">
-              {topClub.map((c, i) => (
-                <div
-                  key={String(c.club)}
-                  className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="text-xs font-black text-gray-400 w-4"
-                      style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
-                    >
-                      {i + 1}
-                    </span>
-                    <div>
-                      {c.club_id ? (
-                        <Link href={`/clubs/${c.club_id}`} className="text-sm font-semibold hover:text-primary">
-                          {String(c.club)}
-                        </Link>
-                      ) : (
-                        <div className="text-sm font-semibold">{String(c.club)}</div>
-                      )}
-                      {c.campionato && (
-                        <div className="text-xs text-gray-400">{String(c.campionato)}</div>
-                      )}
-                    </div>
-                  </div>
-                  <span
-                    className="text-sm font-black text-primary"
-                    style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+              {topClub.map((c, i) => {
+                const clubNome = String(c.club);
+                return (
+                  <button
+                    key={clubNome}
+                    onClick={() => {
+                      const items = trasferimenti.filter(
+                        (t) => t.club_partenza === clubNome || t.club_arrivo === clubNome
+                      );
+                      setClubPanel({ nome: clubNome, club_id: c.club_id, items });
+                    }}
+                    className="w-full flex items-center justify-between py-2 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors text-left"
                   >
-                    {String(c.operazioni)}
-                  </span>
-                </div>
-              ))}
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="text-xs font-black text-gray-400 w-4"
+                        style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                      >
+                        {i + 1}
+                      </span>
+                      <div>
+                        <div className="text-sm font-semibold">{clubNome}</div>
+                        {c.campionato && (
+                          <div className="text-xs text-gray-400">{String(c.campionato)}</div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span
+                        className="text-sm font-black text-primary"
+                        style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                      >
+                        {String(c.operazioni)}
+                      </span>
+                      <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+                );
+              })}
               {topClub.length === 0 && <p className="text-sm text-gray-400">Nessun dato</p>}
             </div>
           </div>
@@ -544,6 +619,97 @@ export default function ProcuratoreProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* ── PANNELLO DETTAGLIO CLUB ────────────────────────────────────────── */}
+      {clubPanel && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/30 z-40"
+            onClick={() => setClubPanel(null)}
+          />
+          <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-2xl z-50 flex flex-col">
+            <div className="border-b border-gray-200 px-5 py-4 flex items-start justify-between shrink-0">
+              <div>
+                <div
+                  className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1"
+                  style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                >
+                  Operazioni con
+                </div>
+                <h3
+                  className="text-xl font-black uppercase leading-tight"
+                  style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                >
+                  {clubPanel.nome}
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {clubPanel.items.length} trasferiment{clubPanel.items.length === 1 ? "o" : "i"} registrat{clubPanel.items.length === 1 ? "o" : "i"}
+                </p>
+              </div>
+              <button
+                onClick={() => setClubPanel(null)}
+                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {clubPanel.club_id && (
+              <div className="px-5 py-2 border-b border-gray-100 shrink-0">
+                <Link
+                  href={`/clubs/${clubPanel.club_id}`}
+                  className="text-xs text-primary hover:underline font-medium"
+                  onClick={() => setClubPanel(null)}
+                >
+                  Apri scheda club →
+                </Link>
+              </div>
+            )}
+            <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+              {clubPanel.items.length === 0 ? (
+                <div className="px-5 py-10 text-center text-xs text-gray-400">
+                  Nessun trasferimento trovato per questo club.
+                </div>
+              ) : (
+                clubPanel.items.map((t) => (
+                  <div key={String(t.id)} className="px-5 py-3.5 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <Link
+                          href={`/giocatori/${t.giocatore_id}`}
+                          className="font-semibold text-sm hover:text-primary"
+                          onClick={() => setClubPanel(null)}
+                        >
+                          {String(t.giocatore_nome ?? "—")}
+                        </Link>
+                        {t.giocatore_ruolo && (
+                          <div className="text-xs text-gray-400">{String(t.giocatore_ruolo)}</div>
+                        )}
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {t.club_partenza ? String(t.club_partenza) : "—"}
+                          <span className="text-primary mx-1">→</span>
+                          {t.club_arrivo ? String(t.club_arrivo) : "—"}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span
+                          className={`text-xs font-bold uppercase px-2 py-0.5 rounded-sm ${
+                            TIPO_COLORS[String(t.tipo)] ?? "bg-gray-100 text-gray-700"
+                          }`}
+                        >
+                          {String(t.tipo ?? "—")}
+                        </span>
+                        <div className="text-xs text-gray-400 mt-0.5">{String(t.stagione ?? "—")}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
