@@ -1,32 +1,8 @@
-# Cloudflare Pages — configurazione Wrangler
-# Documentazione: https://developers.cloudflare.com/pages/framework-guides/nextjs/
-
 name = "transfermap"
-
-# Data di compatibilità: aggiornare periodicamente per accedere alle nuove API CF
 compatibility_date = "2024-09-23"
-
-# nodejs_compat: abilita le API Node.js (Buffer, EventEmitter, stream, ecc.)
-# Richiesto da @libsql/client e da altri package npm che usano primitive Node.js
 compatibility_flags = ["nodejs_compat"]
-
-# Directory di output di @cloudflare/next-on-pages
-# (non .next, ma .vercel/output/static dopo la trasformazione)
 pages_build_output_dir = ".vercel/output/static"
 
-# ── Variabili d'ambiente pubbliche ──────────────────────────────────────────
 [vars]
 NEXT_PUBLIC_APP_URL = "https://transfermap.it"
-
-# ── SEGRETI (non mettere qui valori reali) ───────────────────────────────────
-# Configurare nella dashboard Cloudflare Pages:
-# Settings → Environment variables → Add variable → "Encrypt"
-#
-# Variabili richieste:
-#   TURSO_DATABASE_URL  — es. https://xxx-yyy.turso.io  (usare https://, non libsql://)
-#   TURSO_AUTH_TOKEN    — token JWT Turso
-
-# ── Variabili runtime (non-secret per edge runtime) ──────────────────────────
-# Nota: su Cloudflare Pages edge runtime, usare vars per le variabili di connessione
-[vars]
 TURSO_DATABASE_URL = "https://transfermap-db-arturoknv.aws-eu-west-1.turso.io"
