@@ -50,7 +50,7 @@ function campLabel(c: string | null): string {
   return c;
 }
 
-const SEASONS = ["2024-25", "2023-24", "2022-23", "2021-22", "2020-21"];
+const SEASONS = ["2025-26", "2024-25", "2023-24", "2022-23", "2021-22", "2020-21"];
 const CAMPIONATI = ["Serie A", "Serie B", "Serie C"];
 
 export default function TransfersPage() {
@@ -59,7 +59,7 @@ export default function TransfersPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [season, setSeason] = useState("");
+  const [season, setSeason] = useState("2025-26");
   const [tipo, setTipo] = useState("");
   const [campionato, setCampionato] = useState("");
 

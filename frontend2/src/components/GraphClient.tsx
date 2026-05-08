@@ -123,7 +123,7 @@ function edgeColor(edge: GraphEdge): string {
   return "#9ca3af";                                                           // grigio
 }
 
-const SEASONS = ["2024-25", "2023-24", "2022-23"];
+const SEASONS = ["2025-26", "2024-25", "2023-24", "2022-23"];
 const CAMPIONATI = ["Serie A", "Serie B", "Serie C"];
 
 export default function GraphClient() {
@@ -135,7 +135,7 @@ export default function GraphClient() {
   const [selected, setSelected] = useState<SelectedNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<SelectedEdge | null>(null);
   const [campionato, setCampionato] = useState("Serie A");
-  const [stagione, setStagione] = useState("2024-25");
+  const [stagione, setStagione] = useState("2025-26");
   const [activeTypes, setActiveTypes] = useState<Set<string>>(
     new Set(["club", "giocatore", "procuratore", "ds", "intermediario"])
   );
