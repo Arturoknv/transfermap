@@ -42,11 +42,18 @@ async function getHomeData() {
       query<{ cnt: number }>("SELECT COUNT(*) as cnt FROM club"),
       query(
         `SELECT sc.id, sc.tipo_score, sc.valore, sc.operazioni_base,
-                sc.entita_id, sc.entita_id_2, sc.finestra_temporale,
-                c1.nome as entita_nome, c1.campionato as entita_campionato,
+                sc.entita_id, sc.entita_tipo, sc.entita_id_2, sc.finestra_temporale, sc.dettaglio,
+                COALESCE(
+                  c1.nome,
+                  CASE WHEN sc.entita_tipo = 'procuratore' THEN p1.nome || ' ' || COALESCE(p1.cognome,'') END,
+                  CASE WHEN sc.entita_tipo = 'ds' THEN ds1.nome || ' ' || COALESCE(ds1.cognome,'') END
+                ) as entita_nome,
+                c1.campionato as entita_campionato,
                 c2.nome as entita_2_nome
          FROM score_concentrazione sc
          LEFT JOIN club c1 ON sc.entita_tipo = 'club' AND sc.entita_id = c1.id
+         LEFT JOIN procuratori p1 ON sc.entita_tipo = 'procuratore' AND sc.entita_id = p1.id
+         LEFT JOIN direttori_sportivi ds1 ON sc.entita_tipo = 'ds' AND sc.entita_id = ds1.id
          LEFT JOIN club c2 ON sc.entita_id_2 = c2.id
          WHERE sc.valore >= 50
            AND (sc.entita_tipo != 'club' OR c1.nome IS NULL OR c1.nome NOT LIKE '% Club')
@@ -90,58 +97,135 @@ async function getHomeData() {
   }
 }
 
+const ENTITY_BADGE: Record<string, { label: string; cls: string }> = {
+  club:        { label: "Club",        cls: "bg-red-100 text-red-700" },
+  procuratore: { label: "Procuratore", cls: "bg-orange-100 text-orange-700" },
+  ds:          { label: "DS",          cls: "bg-green-100 text-green-700" },
+  giocatore:   { label: "Giocatore",   cls: "bg-blue-100 text-blue-700" },
+};
+
+function entityHref(tipo: string, id: unknown): string {
+  const s = String(id);
+  if (tipo === "procuratore") return `/procuratori/${s}`;
+  if (tipo === "ds") return `/ds/${s}`;
+  if (tipo === "giocatore") return `/giocatori/${s}`;
+  return `/clubs/${s}`;
+}
+
+const SCORE_DESCRIPTIONS: Record<string, string> = {
+  IPC: "Procuratore concentrato su pochi club",
+  IDP: "DS dipendente da un singolo procuratore",
+  ICC: "Flusso anomalo tra due club specifici",
+  IMD: "Mediazione doppia procuratore-DS",
+  IRC: "Ricircolo circolare di giocatori",
+  ICP: "Mercato dominato da pochi agenti",
+  IPP: "Legame esclusivo procuratore-DS",
+  IDG: "Giocatore legato a un unico procuratore",
+  IIC: "Catena di intermediari nella stessa operazione",
+  ICG: "Concentrazione geografica acquisti",
+};
+
+function parseDettaglioHome(row: Record<string, unknown>): string {
+  const ops = Number(row.operazioni_base);
+  if (!row.dettaglio) return `${ops} operazioni`;
+  let d: Record<string, unknown> = {};
+  try { d = JSON.parse(String(row.dettaglio)); } catch { return `${ops} operazioni`; }
+
+  switch (String(row.tipo_score)) {
+    case "IPC": {
+      const n = (d.club_distinti ?? d.n_club) as number | undefined;
+      return n != null ? `Ha lavorato con ${n} club distinti in ${ops} operazioni` : `${ops} operazioni`;
+    }
+    case "IDP": {
+      const n = (d.procuratori_distinti ?? d.n_procuratori) as number | undefined;
+      return n != null ? `${n} procuratori ricorrenti su ${ops} operazioni` : `${ops} operazioni`;
+    }
+    case "ICC": {
+      const n1 = row.entita_nome as string | undefined;
+      const n2 = row.entita_2_nome as string | undefined;
+      return n1 && n2 ? `${ops} operazioni tra ${n1} e ${n2}` : `${ops} operazioni`;
+    }
+    default:
+      return `${ops} operazioni`;
+  }
+}
+
 function AlertCard({ alert }: { alert: Record<string, unknown> }) {
   const valore = Number(alert.valore);
-  const color =
+  const tipo = String(alert.entita_tipo ?? "");
+  const scoreColor =
     valore >= 60
-      ? { bg: "border-red-300 bg-red-50", badge: "bg-red-500 text-white", label: "ALTO" }
+      ? "bg-red-100 text-red-700 border border-red-200"
       : valore >= 40
-      ? { bg: "border-yellow-300 bg-yellow-50", badge: "bg-yellow-500 text-white", label: "MEDIO" }
-      : { bg: "border-gray-200 bg-white", badge: "bg-gray-400 text-white", label: "BASSO" };
+      ? "bg-yellow-100 text-yellow-700 border border-yellow-200"
+      : "bg-green-100 text-green-700 border border-green-200";
+  const scoreLabel = valore >= 60 ? "ALTO" : valore >= 40 ? "MEDIO" : "BASSO";
+  const badge = ENTITY_BADGE[tipo];
+  const descrizione = parseDettaglioHome(alert);
 
   return (
-    <div className={`border p-4 hover:shadow-sm transition-shadow ${color.bg}`}>
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
+    <div className="border border-gray-200 hover:border-gray-300 transition-colors p-4 flex items-start gap-3">
+      {/* Score badge */}
+      <div className={`inline-flex flex-col items-center px-2.5 py-1.5 shrink-0 ${scoreColor}`}>
+        <span
+          className="text-xl font-black leading-none"
+          style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+        >
+          {valore.toFixed(0)}
+        </span>
+        <span className="text-[10px] font-bold uppercase tracking-wider">{scoreLabel}</span>
+      </div>
+
+      <div className="flex-1 min-w-0">
+        {/* Tipo score + campionato */}
+        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
           <span
-            className={`text-xs font-black px-2 py-0.5 ${color.badge}`}
+            className="text-xs font-black bg-gray-900 text-white px-2 py-0.5"
             style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
           >
             {String(alert.tipo_score)}
           </span>
           {alert.entita_campionato && (
-            <span className="text-xs bg-white border border-gray-200 text-gray-500 px-1.5 py-0.5">
+            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5">
               {String(alert.entita_campionato)}
             </span>
           )}
+          {alert.finestra_temporale && (
+            <span className="text-xs text-gray-400">{String(alert.finestra_temporale)}</span>
+          )}
         </div>
-        <span
-          className="text-2xl font-black text-gray-700 leading-none"
-          style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
-        >
-          {valore.toFixed(0)}
-        </span>
-      </div>
-      <div className="text-sm font-semibold text-gray-900 leading-tight">
-        {alert.entita_nome ? (
-          <Link href={`/clubs/${String(alert.entita_id)}`} className="hover:text-primary">
-            {String(alert.entita_nome)}
-          </Link>
-        ) : (
-          String(alert.entita_id ?? "—")
-        )}
-        {alert.entita_2_nome && (
-          <>
-            <span className="text-primary mx-1.5 font-bold">↔</span>
-            <Link href={`/clubs/${String(alert.entita_id_2)}`} className="hover:text-primary">
-              {String(alert.entita_2_nome)}
+
+        {/* Nome entità + badge tipo */}
+        <div className="flex items-center gap-1.5 flex-wrap text-sm">
+          {alert.entita_nome ? (
+            <Link href={entityHref(tipo, alert.entita_id)} className="font-semibold hover:text-primary leading-tight">
+              {String(alert.entita_nome)}
             </Link>
-          </>
-        )}
-      </div>
-      <div className="text-xs text-gray-500 mt-1">
-        {String(alert.operazioni_base)} operazioni base
-        {alert.finestra_temporale && ` · ${String(alert.finestra_temporale)}`}
+          ) : (
+            <span className="font-semibold text-gray-700">{String(alert.entita_id ?? "—")}</span>
+          )}
+          {badge && (
+            <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 ${badge.cls}`}>
+              {badge.label}
+            </span>
+          )}
+          {alert.entita_2_nome && (
+            <>
+              <span className="text-primary font-bold">↔</span>
+              <Link href={`/clubs/${String(alert.entita_id_2)}`} className="font-semibold hover:text-primary leading-tight">
+                {String(alert.entita_2_nome)}
+              </Link>
+            </>
+          )}
+        </div>
+
+        {/* Descrizione leggibile */}
+        <p className="text-xs text-gray-500 mt-0.5 leading-snug">
+          {descrizione}
+          {SCORE_DESCRIPTIONS[String(alert.tipo_score)] && (
+            <span className="text-gray-400"> — {SCORE_DESCRIPTIONS[String(alert.tipo_score)]}</span>
+          )}
+        </p>
       </div>
     </div>
   );
