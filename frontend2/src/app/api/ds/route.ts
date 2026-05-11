@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { getCached, setCached } from "@/lib/cache";
 
 export const runtime = 'edge'; // Cloudflare Pages edge runtime
 export const revalidate = 3600;
 
 export async function GET(req: Request) {
+  const cacheKey = req.url;
+  const cached = getCached(cacheKey);
+  if (cached) return NextResponse.json(cached);
+
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search") ?? "";
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
@@ -43,12 +48,9 @@ export async function GET(req: Request) {
       args
     );
 
-    return NextResponse.json({
-      data: rows,
-      total: Number(cnt),
-      page,
-      pages: Math.ceil(Number(cnt) / limit),
-    });
+    const responseData = { data: rows, total: Number(cnt), page, pages: Math.ceil(Number(cnt) / limit) };
+    setCached(cacheKey, responseData, 600);
+    return NextResponse.json(responseData);
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Database error" }, { status: 500 });

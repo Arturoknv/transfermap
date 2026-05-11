@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { getCached, setCached } from "@/lib/cache";
 
 export const runtime = 'edge'; // Cloudflare Pages edge runtime
 export const revalidate = 3600;
 
 export async function GET(req: Request) {
+  const cacheKey = req.url;
+  const cached = getCached(cacheKey);
+  if (cached) return NextResponse.json(cached);
+
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
   const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "50"));
@@ -48,13 +53,9 @@ export async function GET(req: Request) {
     const countArgs = args.slice(0, -2);
     const [countRow] = await query<{ cnt: number }>(countSql, countArgs as (string | number)[]);
 
-    return NextResponse.json({
-      data: rows,
-      total: Number(countRow?.cnt ?? 0),
-      page,
-      limit,
-      pages: Math.ceil(Number(countRow?.cnt ?? 0) / limit),
-    });
+    const responseData = { data: rows, total: Number(countRow?.cnt ?? 0), page, limit, pages: Math.ceil(Number(countRow?.cnt ?? 0) / limit) };
+    setCached(cacheKey, responseData, 600);
+    return NextResponse.json(responseData);
   } catch (err) {
     console.error("Clubs error:", err);
     return NextResponse.json({ error: "Database error" }, { status: 500 });

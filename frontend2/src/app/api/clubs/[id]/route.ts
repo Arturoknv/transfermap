@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { getCached, setCached } from "@/lib/cache";
 
 export const runtime = 'edge'; // Cloudflare Pages edge runtime
 export const revalidate = 3600;
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const clubId = parseInt(id);
   if (isNaN(clubId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+
+  const cacheKey = req.url;
+  const cached = getCached(cacheKey);
+  if (cached) return NextResponse.json(cached);
 
   try {
     const [club] = await query(
@@ -97,7 +102,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       [clubId, clubId]
     );
 
-    return NextResponse.json({ club, acquisti, topProcuratori, scores, vendite, topDS });
+    const responseData = { club, acquisti, topProcuratori, scores, vendite, topDS };
+    setCached(cacheKey, responseData, 900);
+    return NextResponse.json(responseData);
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Database error" }, { status: 500 });

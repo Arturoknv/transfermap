@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { getCached, setCached } from "@/lib/cache";
 
 export const runtime = 'edge'; // Cloudflare Pages edge runtime
 export const revalidate = 3600;
 
 export async function GET(req: Request) {
+  const cacheKey = req.url;
+  const cached = getCached(cacheKey);
+  if (cached) return NextResponse.json(cached);
+
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
-  const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "50"));
+  const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "20"));
   const offset = (page - 1) * limit;
   const season = searchParams.get("season") ?? "";
   const tipo = searchParams.get("tipo") ?? "";
@@ -70,14 +75,16 @@ export async function GET(req: Request) {
     const countArgs = args.slice(0, -2);
     const [countRow] = await query<{ cnt: number }>(countSql, countArgs as (string | number)[]);
 
-    return NextResponse.json({
+    const responseData = {
       data: rows,
       total: Number(countRow?.cnt ?? 0),
       page,
       limit,
       pages: Math.ceil(Number(countRow?.cnt ?? 0) / limit),
       debug: { season, campionato, tipo },
-    });
+    };
+    setCached(cacheKey, responseData, 300);
+    return NextResponse.json(responseData);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : '';

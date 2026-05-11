@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { getCached, setCached } from "@/lib/cache";
 
 export const runtime = 'edge'; // Cloudflare Pages edge runtime
 export const revalidate = 3600;
 
-export async function GET() {
+export async function GET(req: Request) {
+  const cacheKey = req.url;
+  const cached = getCached(cacheKey);
+  if (cached) return NextResponse.json(cached);
+
   try {
     const [transfers] = await query<{ cnt: number }>(
       "SELECT COUNT(*) as cnt FROM trasferimenti_ufficiali"
@@ -35,7 +40,7 @@ export async function GET() {
       "SELECT stagione, COUNT(*) as cnt FROM trasferimenti_ufficiali GROUP BY stagione ORDER BY stagione DESC LIMIT 5"
     );
 
-    return NextResponse.json({
+    const responseData = {
       transfers: Number(transfers?.cnt ?? 0),
       players: Number(players?.cnt ?? 0),
       agents: Number(agents?.cnt ?? 0),
@@ -45,7 +50,9 @@ export async function GET() {
       updates,
       byType,
       bySeason,
-    });
+    };
+    setCached(cacheKey, responseData, 600);
+    return NextResponse.json(responseData);
   } catch (err) {
     console.error("Stats error:", err);
     return NextResponse.json({ error: "Database error" }, { status: 500 });

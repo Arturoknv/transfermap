@@ -1,16 +1,21 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { getCached, setCached } from "@/lib/cache";
 
 export const runtime = 'edge'; // Cloudflare Pages edge runtime
 export const revalidate = 3600;
 
 export async function GET(req: Request) {
+  const cacheKey = req.url;
+  const memCached = getCached(cacheKey);
+  if (memCached) return NextResponse.json(memCached);
+
   const { searchParams } = new URL(req.url);
   const campionato = searchParams.get("campionato") ?? "Serie A";
   const stagione = searchParams.get("stagione") ?? "2024-25";
 
   try {
-    // Try cache first
+    // Try DB-level cache first
     const cached = await query<{
       nodi_json: string;
       archi_json: string;
@@ -39,11 +44,9 @@ export async function GET(req: Request) {
         (e) => validIds.has(e.source) && validIds.has(e.target)
       );
 
-      return NextResponse.json({
-        nodes: cleanNodes,
-        edges: cleanEdges,
-        meta: { calcolato_il, campionato, stagione },
-      });
+      const dbCachedData = { nodes: cleanNodes, edges: cleanEdges, meta: { calcolato_il, campionato, stagione } };
+      setCached(cacheKey, dbCachedData, 1800);
+      return NextResponse.json(dbCachedData);
     }
 
     // Build graph live (limited to 500 transfers)
@@ -110,11 +113,9 @@ export async function GET(req: Request) {
     }));
     const edges = Array.from(edgeMap.values());
 
-    return NextResponse.json({
-      nodes,
-      edges,
-      meta: { calcolato_il: new Date().toISOString(), campionato, stagione, live: true },
-    });
+    const liveData = { nodes, edges, meta: { calcolato_il: new Date().toISOString(), campionato, stagione, live: true } };
+    setCached(cacheKey, liveData, 1800);
+    return NextResponse.json(liveData);
   } catch (err) {
     console.error("Graph error:", err);
     return NextResponse.json({ error: "Database error" }, { status: 500 });
