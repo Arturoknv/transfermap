@@ -57,6 +57,8 @@ export async function GET(req: Request) {
 
     const rows = await query(sql, args);
 
+    console.log('Query result count:', rows.length, 'Args:', { season, campionato, tipo, search, page, limit });
+
     const countSql = `
       SELECT COUNT(*) as cnt
       FROM trasferimenti_ufficiali t
@@ -74,6 +76,7 @@ export async function GET(req: Request) {
       page,
       limit,
       pages: Math.ceil(Number(countRow?.cnt ?? 0) / limit),
+      debug: { season, campionato, tipo },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
